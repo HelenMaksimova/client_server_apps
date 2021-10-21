@@ -62,6 +62,7 @@ def get_data(headers: List[str], files: List[str]) -> List[list]:
     """
     patterns = [re.compile(param) for param in headers]
     data_dict = defaultdict(list)
+
     for file in files:
         encoding = get_encoding(file)
         with open(file, encoding=encoding) as parsed_file:
@@ -70,6 +71,7 @@ def get_data(headers: List[str], files: List[str]) -> List[list]:
                     if re.match(pattern, line):
                         item = line.strip().split(':')
                         data_dict[item[0]].append(item[1].strip())
+
     gen_for_zip = (data_dict[name] for name in headers)
     result_data_lst = [headers]
     result_data_lst.extend([list(item) for item in zip(*gen_for_zip)])
