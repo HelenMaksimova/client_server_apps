@@ -1,0 +1,6 @@
+2021-11-02 23:37:17,225 DEBUG    client.py  Функция create_presence_message вызвана из функции main в модуле client.py с аргументами:(7777,); {}
+2021-11-02 23:37:17,225 DEBUG    client.py  Функция send_message вызвана из функции main в модуле client.py с аргументами:(<socket.socket fd=5, family=AddressFamily.AF_INET, type=SocketKind.SOCK_STREAM, proto=0, laddr=('127.0.0.1', 44424), raddr=('127.0.0.1', 7777)>, {'action': 'presence', 'time': 1635885437.2252772, 'port': 7777, 'user': {'account_name': 'Guest'}}); {}
+2021-11-02 23:37:17,225 INFO     client.py  Отправлено сообщение presence от пользователя Guest для сервера 127.0.0.1
+2021-11-02 23:37:17,225 DEBUG    client.py  Функция get_message вызвана из функции main в модуле client.py с аргументами:(<socket.socket fd=5, family=AddressFamily.AF_INET, type=SocketKind.SOCK_STREAM, proto=0, laddr=('127.0.0.1', 44424), raddr=('127.0.0.1', 7777)>,); {}
+2021-11-02 23:37:17,225 DEBUG    client.py  Функция process_answer вызвана из функции main в модуле client.py с аргументами:({'response': 200},); {}
+2021-11-02 23:37:17,225 INFO     client.py  Получен ответ от сервера 127.0.0.1: 200 : OK

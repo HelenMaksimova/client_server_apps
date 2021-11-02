@@ -1,0 +1,8 @@
+2021-11-02 23:37:15,166 INFO     server.py  Запущен сервер. Порт подключений: 7777, адрес прослушивания: 
+2021-11-02 23:37:17,225 INFO     server.py  Установлено соединение с клиентом ('127.0.0.1', 44424)
+2021-11-02 23:37:17,225 DEBUG    server.py  Функция get_message вызвана из функции main в модуле server.py с аргументами:(<socket.socket fd=6, family=AddressFamily.AF_INET, type=SocketKind.SOCK_STREAM, proto=0, laddr=('127.0.0.1', 7777), raddr=('127.0.0.1', 44424)>,); {}
+2021-11-02 23:37:17,225 DEBUG    server.py  Получено сообщение {'action': 'presence', 'time': 1635885437.2252772, 'port': 7777, 'user': {'account_name': 'Guest'}} от клиента ('127.0.0.1', 44424)
+2021-11-02 23:37:17,225 DEBUG    server.py  Функция process_client_message вызвана из функции main в модуле server.py с аргументами:({'action': 'presence', 'time': 1635885437.2252772, 'port': 7777, 'user': {'account_name': 'Guest'}},); {}
+2021-11-02 23:37:17,225 DEBUG    server.py  Функция send_message вызвана из функции main в модуле server.py с аргументами:(<socket.socket fd=6, family=AddressFamily.AF_INET, type=SocketKind.SOCK_STREAM, proto=0, laddr=('127.0.0.1', 7777), raddr=('127.0.0.1', 44424)>, {'response': 200}); {}
+2021-11-02 23:37:17,225 INFO     server.py  Отправлено сообщение {'response': 200} клиенту ('127.0.0.1', 44424)
+2021-11-02 23:37:17,225 INFO     server.py  Соединение с клиентом ('127.0.0.1', 44424) закрывается
