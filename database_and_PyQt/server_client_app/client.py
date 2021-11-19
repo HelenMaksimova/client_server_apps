@@ -1,0 +1,7 @@
+"""Программа-клиент"""
+
+from client_class import Client
+
+if __name__ == '__main__':
+    client = Client()
+    client.run()
