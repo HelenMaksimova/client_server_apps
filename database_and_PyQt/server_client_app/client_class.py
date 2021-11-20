@@ -10,18 +10,24 @@ import custom_exceptions
 import common.variables as vrs
 import logs.client_log_config
 from common.utils import send_message, get_message
-from decos import Log
+from metaclasses import ClientVerifier
+from descriptors import Port, IpAddress
 
 LOG = logging.getLogger('client')
 LOG_F = logging.getLogger('client_func')
 
 
-class Client:
+class Client(metaclass=ClientVerifier):
     """
     Класс клиента
     """
 
-    @Log(LOG_F)
+    # для проверки работы метакласса
+    # a = socket.socket()
+
+    server_port = Port()
+    server_address = IpAddress()
+
     def __init__(self):
         """
         Метод инициализации
@@ -33,7 +39,6 @@ class Client:
         self.server_port, self.server_address, self.client_name = self.get_params()
         self.transport = self.prepare_transport()
 
-    @Log(LOG_F)
     def create_message(self, action, message=None, destination=None):
         """
         Метод создания сообщений
@@ -61,7 +66,6 @@ class Client:
 
         return result_message
 
-    @Log(LOG_F)
     def presence_answer(self):
         """
         Метод обработки ответа сервера на приветственное сообщение
@@ -97,7 +101,6 @@ class Client:
                 LOG.critical(f'Потеряно соединение с сервером.')
                 break
 
-    @Log(LOG_F)
     def send_message_to_server(self, to_client, message):
         """
         Метод отправки сообщений на сервер для других клиентов
@@ -113,7 +116,6 @@ class Client:
             LOG.critical('Потеряно соединение с сервером.')
             sys.exit(1)
 
-    @Log(LOG_F)
     def prepare_transport(self):
         """
         Метод подготовки сокета клиента
@@ -121,6 +123,9 @@ class Client:
         """
         try:
             transport = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # для проверки работы метакласса
+            # transport = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            # transport.listen()
             transport.connect((self.server_address, self.server_port))
         except ConnectionRefusedError:
             LOG.critical(f'Не удалось подключиться к серверу {self.server_address}:{self.server_port}')
@@ -148,7 +153,6 @@ class Client:
             else:
                 print('Команда не распознана, попробойте снова. help - вывести поддерживаемые команды.')
 
-    @Log(LOG_F)
     def send_presence(self):
         """
         Метод отправки приветственного сообщения на сервер.
@@ -190,7 +194,6 @@ class Client:
                 break
 
     @staticmethod
-    @Log(LOG_F)
     def print_help():
         """
         Метод, выводящий справку по использованию
@@ -201,7 +204,6 @@ class Client:
         print('exit - выход из программы')
 
     @staticmethod
-    @Log(LOG_F)
     def input_message():
         """
         Метод для получения адресата и сообщения от пользователя
@@ -217,7 +219,6 @@ class Client:
         return to_client, message
 
     @staticmethod
-    @Log(LOG_F)
     def get_params():
         """
         Метод получения параметров при запуске из комадной строки

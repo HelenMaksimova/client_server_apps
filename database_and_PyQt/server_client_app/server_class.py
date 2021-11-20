@@ -5,21 +5,21 @@ import sys
 import select
 import time
 from collections import deque
-from socket import socket, AF_INET, SOCK_STREAM
+from socket import socket, AF_INET, SOCK_STREAM, SOCK_DGRAM
 
 # project modules imports
 import common.variables as vrs
-import custom_exceptions
 import logs.server_log_config
-from decos import Log
 from common.utils import get_message, send_message
+from descriptors import Port, IpAddress
+from metaclasses import ServerVerifier
 
 
 LOG = logging.getLogger('server')
 LOG_F = logging.getLogger('server_func')
 
 
-class Server:
+class Server(metaclass=ServerVerifier):
     """
     Класс сервера
     """
@@ -29,7 +29,9 @@ class Server:
         'BAD_REQUEST': {vrs.RESPONSE: 400, vrs.ERROR: 'Bad Request'}
     }
 
-    @Log(LOG_F)
+    listen_port = Port()
+    listen_address = IpAddress()
+
     def __init__(self):
         """
         Метод инициализации
@@ -53,20 +55,20 @@ class Server:
         self.transport = self.prepare_socket()
         LOG.debug(f'Создан объект сервера')
 
-    @Log(LOG_F)
     def prepare_socket(self):
         """
         Метод подготовки и запуска сокета сервера
         :return: сокет сервера
         """
         transport = socket(AF_INET, SOCK_STREAM)
+        # для проверки работы метакласса
+        # transport = socket(AF_INET, SOCK_DGRAM)
+        # transport.connect('127.0.0.1')
         transport.bind((self.listen_address, self.listen_port))
         transport.settimeout(1)
         transport.listen(vrs.MAX_CONNECTIONS)
-        LOG.info(f'Запущен сервер. Порт подключений: {self.listen_port}, адрес прослушивания: {self.listen_address}')
         return transport
 
-    @Log(LOG_F)
     def process_client_message(self, message, client):
         """
         Метод обработки сообщений клиентов
@@ -120,7 +122,6 @@ class Server:
                 LOG.info(f'Клиент {client_with_message.getpeername()} отключился от сервера.')
                 self.clients_list.remove(client_with_message)
 
-    @Log(LOG_F)
     def send_messages_to_clients(self):
         """
         Метод отправки сообщений клиентам
@@ -139,6 +140,7 @@ class Server:
                     self.clients_list.remove(waiting_client)
 
     def run(self):
+        LOG.info(f'Запущен сервер. Порт подключений: {self.listen_port}, адрес прослушивания: {self.listen_address}')
         """
         Основной метод сервера
         :return: None
@@ -168,7 +170,6 @@ class Server:
                 self.send_messages_to_clients()
 
     @staticmethod
-    @Log(LOG_F)
     def get_params():
         """
         Метод получения параметров при запуске из комадной строки
@@ -178,10 +179,4 @@ class Server:
         parser.add_argument('-p', type=int, default=vrs.DEFAULT_PORT)
         parser.add_argument('-a', type=str, default='')
         args = parser.parse_args()
-        try:
-            if not (1024 < args.p < 65535):
-                raise custom_exceptions.PortOutOfRange
-        except custom_exceptions.PortOutOfRange as error:
-            LOG.critical(f'Ошибка порта {args.p}: {error}. Соединение закрывается.')
-            sys.exit(1)
         return args.p, args.a

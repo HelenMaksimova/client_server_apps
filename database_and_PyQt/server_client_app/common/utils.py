@@ -3,10 +3,8 @@
 import json
 from common.variables import MAX_PACKAGE_LENGTH, ENCODING
 import custom_exceptions
-from decos import Log
 
 
-@Log()
 def get_message(socket):
     """
     Утилита приёма и декодирования сообщения
@@ -25,7 +23,6 @@ def get_message(socket):
     raise ValueError
 
 
-@Log()
 def send_message(socket, message):
     """
     Утилита кодирования и отправки сообщения

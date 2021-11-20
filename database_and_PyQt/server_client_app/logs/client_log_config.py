@@ -23,13 +23,6 @@ FILE_HANDLER.setFormatter(FORMAT)
 LOGGER.addHandler(STDERR_HANDLER)
 LOGGER.addHandler(FILE_HANDLER)
 
-LOGGER_FUNC = logging.getLogger('client_func')
-LOGGER_FUNC.setLevel(logging.DEBUG)
-FILE_HANDLER_FUNC = logging.FileHandler(os.path.join(LOG_DIRECTORY_PATH, 'client_func.log'))
-FILE_HANDLER_FUNC.setLevel(logging.DEBUG)
-FILE_HANDLER_FUNC.setFormatter(FORMAT)
-LOGGER_FUNC.addHandler(FILE_HANDLER_FUNC)
-
 if __name__ == '__main__':
     LOGGER.debug('DEBUG')
     LOGGER.info('INFO')
