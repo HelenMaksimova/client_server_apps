@@ -11,6 +11,8 @@ MAX_CONNECTIONS = 5
 MAX_PACKAGE_LENGTH = 1024
 # Кодировка проекта
 ENCODING = 'utf-8'
+# Название базы данных
+DATABASE_SERVER = 'sqlite:///server_base.db3'
 
 # Прококол JIM основные ключи:
 ACTION = 'action'

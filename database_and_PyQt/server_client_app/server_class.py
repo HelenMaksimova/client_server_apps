@@ -3,6 +3,7 @@ import argparse
 import logging
 import sys
 import select
+import threading
 import time
 from collections import deque
 from socket import socket, AF_INET, SOCK_STREAM, SOCK_DGRAM
@@ -13,13 +14,14 @@ import logs.server_log_config
 from common.utils import get_message, send_message
 from descriptors import Port, IpAddress
 from metaclasses import ServerVerifier
+from server_storage_class import ServerStorage
 
 
 LOG = logging.getLogger('server')
 LOG_F = logging.getLogger('server_func')
 
 
-class Server(metaclass=ServerVerifier):
+class Server(threading.Thread, metaclass=ServerVerifier):
     """
     Класс сервера
     """
@@ -32,7 +34,7 @@ class Server(metaclass=ServerVerifier):
     listen_port = Port()
     listen_address = IpAddress()
 
-    def __init__(self):
+    def __init__(self, database=vrs.DATABASE_SERVER):
         """
         Метод инициализации
         self.clients_names - словарь зарегистрированых пользователей
@@ -53,6 +55,8 @@ class Server(metaclass=ServerVerifier):
         self.errors_list = []
         self.listen_port, self.listen_address = self.get_params()
         self.transport = self.prepare_socket()
+        self.database = ServerStorage(database)
+        super().__init__()
         LOG.debug(f'Создан объект сервера')
 
     def prepare_socket(self):
@@ -81,6 +85,8 @@ class Server(metaclass=ServerVerifier):
             client_name = message[vrs.USER][vrs.ACCOUNT_NAME]
             if client_name not in self.clients_names:
                 self.clients_names[client_name] = client
+                client_ip, client_port = client.getpeername()
+                self.database.login_user(client_name, client_ip, client_port)
                 send_message(client, self.RESPONSES.get('OK'))
                 LOG.debug(f'Клиент {client_name} зарегестрирован на сервере')
             else:
@@ -102,6 +108,7 @@ class Server(metaclass=ServerVerifier):
 
         if message.get(vrs.ACTION) == vrs.EXIT and vrs.ACCOUNT_NAME in message:
             self.clients_list.remove(self.clients_names[message[vrs.ACCOUNT_NAME]])
+            self.database.logout_user(message[vrs.ACCOUNT_NAME])
             self.clients_names[message[vrs.ACCOUNT_NAME]].close()
             LOG.debug(f'Клиент {message[vrs.ACCOUNT_NAME]} вышел из чата. Клиент отключён от сервера.')
             del self.clients_names[message[vrs.ACCOUNT_NAME]]
