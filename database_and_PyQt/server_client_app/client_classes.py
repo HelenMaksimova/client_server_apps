@@ -1,6 +1,3 @@
-import argparse
-import socket
-import sys
 import logging
 import time
 import json
@@ -10,15 +7,9 @@ import custom_exceptions
 import common.variables as vrs
 import logs.client_log_config
 from common.utils import send_message, get_message
-from metaclasses import ClientVerifier
-from descriptors import Port, IpAddress
+from client_functions import add_contact, remove_contact
 
 LOG = logging.getLogger('client')
-LOG_F = logging.getLogger('client_func')
-
-
-class ClientSender:
-    pass
 
 
 class ClientReceiver(threading.Thread):
@@ -63,61 +54,21 @@ class ClientReceiver(threading.Thread):
                     break
 
 
-class ClientManager:
-
-    def prepare_transport(self):
-        """
-        Метод подготовки сокета клиента
-        :return: сокет клиента
-        """
-        try:
-            transport = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            transport.connect((self.server_address, self.server_port))
-        except ConnectionRefusedError:
-            LOG.critical(f'Не удалось подключиться к серверу {self.server_address}:{self.server_port}')
-            sys.exit(1)
-        return transport
-
-    def send_presence(self):
-        """
-        Метод отправки приветственного сообщения на сервер.
-        В случае ответа сервера об успешном подключении возвращает True
-        :return: True или False
-        """
-        try:
-            send_message(self.transport, self.create_message(vrs.PRESENCE))
-            answer = self.presence_answer()
-            LOG.info(f'Установлено соединение с сервером. Ответ сервера: {answer}')
-            print(f'Установлено соединение с сервером.')
-            return True if answer == '200 : OK' else False
-        except json.JSONDecodeError:
-            LOG.error('Не удалось декодировать полученную Json строку.')
-            sys.exit(1)
-        except custom_exceptions.NoResponseInServerMessage as error:
-            LOG.error(f'Ошибка сообщения сервера {self.server_address}: {error}')
-
-
-class Client(metaclass=ClientVerifier):
+class ClientSender(threading.Thread):
     """
     Класс клиента
     """
 
-    # для проверки работы метакласса
-    # a = socket.socket()
-
-    server_port = Port()
-    server_address = IpAddress()
-
-    def __init__(self):
+    def __init__(self, client_name, transport, database):
         """
         Метод инициализации
-        self.server_port - порт сервера
-        self.server_address - адрес сервера
-        self.client_name - имя клиента
-        self.transport - сокет клиента
         """
-        self.server_port, self.server_address, self.client_name = self.get_params()
-        self.transport = self.prepare_transport()
+        self.client_name = client_name
+        self.transport = transport
+        self.database = database
+        self.database_locker = threading.Lock()
+        self.transport_locker = threading.Lock()
+        super().__init__()
 
     def create_message(self, action, message=None, destination=None):
         """
@@ -127,16 +78,16 @@ class Client(metaclass=ClientVerifier):
         :param destination: адресат сообщения
         :return: сообщение в виде словаря
         """
+
+        _, port = self.transport.getpeername()
+
         result_message = {
             vrs.ACTION: action,
             vrs.TIME: time.time(),
-            vrs.PORT: self.server_port,
+            vrs.PORT: port,
         }
 
-        if action == vrs.PRESENCE:
-            result_message[vrs.USER] = {vrs.ACCOUNT_NAME: self.client_name}
-
-        elif action == vrs.MESSAGE and message and destination:
+        if action == vrs.MESSAGE and message and destination:
             result_message[vrs.SENDER] = self.client_name
             result_message[vrs.MESSAGE_TEXT] = message
             result_message[vrs.DESTINATION] = destination
@@ -146,18 +97,6 @@ class Client(metaclass=ClientVerifier):
 
         return result_message
 
-    def presence_answer(self):
-        """
-        Метод обработки ответа сервера на приветственное сообщение
-        :return: ответ сервера в виде строки
-        """
-        server_message = get_message(self.transport)
-        if vrs.RESPONSE in server_message:
-            if server_message[vrs.RESPONSE] == 200:
-                return '200 : OK'
-            return f'400 : {server_message[vrs.ERROR]}'
-        raise custom_exceptions.NoResponseInServerMessage
-
     def send_message_to_server(self, to_client, message):
         """
         Метод отправки сообщений на сервер для других клиентов
@@ -166,19 +105,28 @@ class Client(metaclass=ClientVerifier):
         :return: None
         """
         message_to_send = self.create_message(vrs.MESSAGE, message, to_client)
-        try:
-            send_message(self.transport, message_to_send)
-            LOG.info(f'{self.client_name}: Отправлено сообщение для пользователя {to_client}')
-        except Exception:
-            LOG.critical('Потеряно соединение с сервером.')
-            sys.exit(1)
+        with self.database_locker:
+            if not self.database.check_user(to_client):
+                LOG.error(f'Попытка отправить сообщение незарегистрированому получателю: {to_client}')
+                return
+            self.database.save_message(self.client_name, to_client, message)
+        with self.transport_locker:
+            try:
+                send_message(self.transport, message_to_send)
+                LOG.info(f'{self.client_name}: Отправлено сообщение для пользователя {to_client}')
+            except OSError as error:
+                if error.errno:
+                    LOG.critical('Потеряно соединение с сервером.')
+                    exit(1)
+                else:
+                    LOG.error('Не удалось передать сообщение. Таймаут соединения')
 
-
-    def user_interactive(self):
+    def run(self):
         """
         Метод взаимодействия клиента с пользователем
         :return: None
         """
+        print(self.client_name)
         self.print_help()
         while True:
             command = input('Введите команду: ')
@@ -187,36 +135,71 @@ class Client(metaclass=ClientVerifier):
             elif command == 'help':
                 self.print_help()
             elif command == 'exit':
-                send_message(self.transport, self.create_message(vrs.EXIT))
+                with self.transport_locker:
+                    try:
+                        send_message(self.transport, self.create_message(vrs.EXIT))
+                    except Exception:
+                        pass
                 print('Завершение соединения.')
                 LOG.info('Завершение работы по команде пользователя.')
                 time.sleep(0.5)
                 break
+            elif command == 'contacts':
+                with self.database_locker:
+                    contacts_list = self.database.get_contacts()
+                for contact in contacts_list:
+                    print(contact)
+            elif command == 'edit':
+                self.edit_contacts()
+            elif command == 'history':
+                self.print_history()
             else:
-                print('Команда не распознана, попробойте снова. help - вывести поддерживаемые команды.')
+                print('Команда не распознана, попробуйте снова. help - вывести поддерживаемые команды.')
 
+    def print_history(self):
+        ask = input('Показать входящие сообщения - in, исходящие - out, все - просто Enter: ')
+        with self.database_locker:
+            if ask == 'in':
+                history_list = self.database.get_history(to_who=self.client_name)
+                for message in history_list:
+                    print(f'\nСообщение от пользователя: {message[0]} от {message[3]}:\n{message[2]}')
+            elif ask == 'out':
+                history_list = self.database.get_history(from_who=self.client_name)
+                for message in history_list:
+                    print(f'\nСообщение пользователю: {message[1]} от {message[3]}:\n{message[2]}')
+            else:
+                history_list = self.database.get_history()
+                for message in history_list:
+                    print(f'\nСообщение от пользователя: '
+                          f'{message[0]}, пользователю {message[1]} от {message[3]}\n{message[2]}')
 
-    def run(self):
-        """
-        Основной метод клиента
-        :return: None
-        """
-        print(self.client_name)
-        if self.send_presence():
-            receiver = threading.Thread(target=self.process_server_message)
-            receiver.daemon = True
-            receiver.start()
+    def edit_contacts(self):
 
-            user_interface = threading.Thread(target=self.user_interactive)
-            user_interface.daemon = True
-            user_interface.start()
-            LOG.debug(f'{self.client_name}: Запущены процессы')
+        answer = input('Для удаления введите del, для добавления add: ')
 
-            while True:
-                time.sleep(1)
-                if receiver.is_alive() and user_interface.is_alive():
-                    continue
-                break
+        if answer == 'del':
+            username = input('Введите имя удаляемного контакта: ')
+            with self.database_locker:
+                if self.database.check_contact(username):
+                    self.database.del_contact(username)
+                    with self.transport_locker:
+                        try:
+                            remove_contact(self.transport, self.client_name, username)
+                        except custom_exceptions.NoResponseInServerMessage:
+                            LOG.error('Не удалось отправить информацию на сервер.')
+                else:
+                    LOG.error('Попытка удаления несуществующего контакта.')
+
+        elif answer == 'add':
+            username = input('Введите имя создаваемого контакта: ')
+            if self.database.check_user(username):
+                with self.database_locker:
+                    self.database.add_contact(username)
+                with self.transport_locker:
+                    try:
+                        add_contact(self.transport, self.client_name, username)
+                    except custom_exceptions.NoResponseInServerMessage:
+                        LOG.error('Не удалось отправить информацию на сервер.')
 
     @staticmethod
     def print_help():
@@ -226,6 +209,9 @@ class Client(metaclass=ClientVerifier):
         print('Поддерживаемые команды:')
         print('message - отправить сообщение. Кому и текст будет запрошены отдельно.')
         print('help - вывести подсказки по командам')
+        print('history - история сообщений')
+        print('contacts - список контактов')
+        print('edit - редактирование списка контактов')
         print('exit - выход из программы')
 
     @staticmethod
@@ -242,28 +228,3 @@ class Client(metaclass=ClientVerifier):
             else:
                 print('Имя пользователя и сообщение не может быть пустым!')
         return to_client, message
-
-    @staticmethod
-    def get_params():
-        """
-        Метод получения параметров при запуске из комадной строки
-        :return: кортеж параметров
-        """
-        parser = argparse.ArgumentParser()
-        parser.add_argument('port', nargs='?', type=int, default=vrs.DEFAULT_PORT)
-        parser.add_argument('address', nargs='?', type=str, default=vrs.DEFAULT_IP_ADDRESS)
-        parser.add_argument('-n', '--name', type=str, default='Guest')
-
-        args = parser.parse_args()
-
-        server_port = args.port
-        server_address = args.address
-        client_name = args.name
-
-        try:
-            if not (1024 < server_port < 65535):
-                raise custom_exceptions.PortOutOfRange
-        except custom_exceptions.PortOutOfRange as error:
-            LOG.critical(f'Ошибка порта {server_port}: {error}. Соединение закрывается.')
-            sys.exit(1)
-        return server_port, server_address, client_name
