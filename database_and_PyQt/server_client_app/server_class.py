@@ -18,7 +18,19 @@ from server_storage_class import ServerStorage
 
 
 LOG = logging.getLogger('server')
-LOG_F = logging.getLogger('server_func')
+
+
+class NewConnection:
+
+    def __init__(self):
+        self.value = False
+        self.locker = threading.Lock()
+
+    def set_true(self):
+        self.value = True
+
+    def set_false(self):
+        self.value = False
 
 
 class Server(threading.Thread, metaclass=ServerVerifier):
@@ -28,13 +40,14 @@ class Server(threading.Thread, metaclass=ServerVerifier):
 
     RESPONSES = {
         'OK': {vrs.RESPONSE: 200},
-        'BAD_REQUEST': {vrs.RESPONSE: 400, vrs.ERROR: 'Bad Request'}
+        'BAD_REQUEST': {vrs.RESPONSE: 400, vrs.ERROR: 'Bad Request'},
+        '202': {vrs.RESPONSE: 202, vrs.LIST_INFO: None},
     }
 
     listen_port = Port()
     listen_address = IpAddress()
 
-    def __init__(self, database=vrs.DATABASE_SERVER):
+    def __init__(self, listen_port, listen_address, db_path, new_connection):
         """
         Метод инициализации
         self.clients_names - словарь зарегистрированых пользователей
@@ -53,9 +66,11 @@ class Server(threading.Thread, metaclass=ServerVerifier):
         self.receive_data_list = []
         self.send_data_list = []
         self.errors_list = []
-        self.listen_port, self.listen_address = self.get_params()
+        self.listen_port = listen_port
+        self.listen_address = listen_address
         self.transport = self.prepare_socket()
-        self.database = ServerStorage(database)
+        self.new_connection = new_connection
+        self.database = ServerStorage(db_path)
         super().__init__()
         LOG.debug(f'Создан объект сервера')
 
@@ -89,6 +104,8 @@ class Server(threading.Thread, metaclass=ServerVerifier):
                 self.database.login_user(client_name, client_ip, client_port)
                 send_message(client, self.RESPONSES.get('OK'))
                 LOG.debug(f'Клиент {client_name} зарегестрирован на сервере')
+                with self.new_connection.locker:
+                    self.new_connection.value = True
             else:
                 response = self.RESPONSES['BAD_REQUEST']
                 response[vrs.ERROR] = f'Имя пользователя {client_name} уже занято.'
@@ -112,6 +129,34 @@ class Server(threading.Thread, metaclass=ServerVerifier):
             self.clients_names[message[vrs.ACCOUNT_NAME]].close()
             LOG.debug(f'Клиент {message[vrs.ACCOUNT_NAME]} вышел из чата. Клиент отключён от сервера.')
             del self.clients_names[message[vrs.ACCOUNT_NAME]]
+            with self.new_connection.locker:
+                self.new_connection.value = True
+            return
+
+        if vrs.ACTION in message and message[vrs.ACTION] == vrs.GET_CONTACTS and vrs.USER in message and \
+                self.clients_names[message[vrs.USER]] == client:
+            response = self.RESPONSES['202']
+            response[vrs.LIST_INFO] = self.database.get_contacts(message[vrs.USER])
+            send_message(client, response)
+            return
+
+        if vrs.ACTION in message and message[vrs.ACTION] == vrs.ADD_CONTACT and vrs.ACCOUNT_NAME in message and \
+                vrs.USER in message and self.clients_names[message[vrs.USER]] == client:
+            self.database.add_contact(message[vrs.USER], message[vrs.ACCOUNT_NAME])
+            send_message(client, self.RESPONSES['OK'])
+            return
+
+        if vrs.ACTION in message and message[vrs.ACTION] == vrs.REMOVE_CONTACT and vrs.ACCOUNT_NAME in message and \
+                vrs.USER in message and self.clients_names[message[vrs.USER]] == client:
+            self.database.remove_contact(message[vrs.USER], message[vrs.ACCOUNT_NAME])
+            send_message(client, self.RESPONSES['OK'])
+            return
+
+        if vrs.ACTION in message and message[vrs.ACTION] == vrs.USERS_REQUEST and vrs.ACCOUNT_NAME in message and \
+                self.clients_names[message[vrs.ACCOUNT_NAME]] == client:
+            response = self.RESPONSES['202']
+            response[vrs.LIST_INFO] = [user[0] for user in self.database.users_all()]
+            send_message(client, response)
             return
 
         send_message(client, self.RESPONSES.get('BAD_REQUEST'))
@@ -127,6 +172,11 @@ class Server(threading.Thread, metaclass=ServerVerifier):
                 self.process_client_message(get_message(client_with_message), client_with_message)
             except Exception:
                 LOG.info(f'Клиент {client_with_message.getpeername()} отключился от сервера.')
+                for name in self.clients_names:
+                    if self.clients_names[name] == client_with_message:
+                        self.database.logout_user(name)
+                        del self.clients_names[name]
+                        break
                 self.clients_list.remove(client_with_message)
 
     def send_messages_to_clients(self):
@@ -137,14 +187,20 @@ class Server(threading.Thread, metaclass=ServerVerifier):
         while self.messages_deque:
             message = self.messages_deque.popleft()
             waiting_client = self.clients_names[message[vrs.DESTINATION]]
-            if waiting_client in self.send_data_list:
+            if waiting_client in self.send_data_list and message[vrs.DESTINATION] in self.clients_names:
                 try:
                     send_message(waiting_client, message)
+                    self.database.process_message(message[vrs.SENDER], message[vrs.DESTINATION])
                     LOG.info(f'Сообщение клиента {message[vrs.SENDER]} отправлено клиенту {message[vrs.DESTINATION]}')
-                except Exception:
+                except (ConnectionAbortedError, ConnectionError, ConnectionResetError, ConnectionRefusedError):
                     LOG.info(f'Клиент {waiting_client.getpeername()} отключился от сервера.')
                     waiting_client.close()
                     self.clients_list.remove(waiting_client)
+                    self.database.logout_user(message[vrs.DESTINATION])
+                    del self.clients_names[message[vrs.DESTINATION]]
+            else:
+                LOG.error(f'Пользователь {message[vrs.DESTINATION]} не зарегистрирован на сервере, '
+                          f'отправка сообщения невозможна.')
 
     def run(self):
         LOG.info(f'Запущен сервер. Порт подключений: {self.listen_port}, адрес прослушивания: {self.listen_address}')
@@ -175,15 +231,3 @@ class Server(threading.Thread, metaclass=ServerVerifier):
 
             if self.messages_deque and self.send_data_list:
                 self.send_messages_to_clients()
-
-    @staticmethod
-    def get_params():
-        """
-        Метод получения параметров при запуске из комадной строки
-        :return: кортеж параметров
-        """
-        parser = argparse.ArgumentParser()
-        parser.add_argument('-p', type=int, default=vrs.DEFAULT_PORT)
-        parser.add_argument('-a', type=str, default='')
-        args = parser.parse_args()
-        return args.p, args.a

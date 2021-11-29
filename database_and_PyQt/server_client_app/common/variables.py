@@ -30,6 +30,11 @@ MESSAGE = 'message'
 MESSAGE_TEXT = 'message_text'
 EXIT = 'exit'
 DESTINATION = 'destination'
+GET_CONTACTS = 'get_contacts'
+LIST_INFO = 'data_list'
+REMOVE_CONTACT = 'remove'
+ADD_CONTACT = 'add'
+USERS_REQUEST = 'get_users'
 RESPONDEFAULT_IP_ADDRESSSE = 'respondefault_ip_addressse'
 
 # логирование

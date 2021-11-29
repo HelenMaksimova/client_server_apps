@@ -43,12 +43,26 @@ class ServerStorage:
         port = Column(Integer)
         date_time = Column(DateTime)
 
+    class UsersContacts(Base):
+        __tablename__ = 'users_contacts'
+        id = Column(Integer, primary_key=True)
+        user = Column(ForeignKey('users.id'))
+        contact = Column(ForeignKey('users.id'))
+
+    class UsersHistory(Base):
+        __tablename__ = 'history'
+        id = Column(Integer, primary_key=True)
+        user = Column(ForeignKey('users.id'))
+        sent = Column(Integer, default=0)
+        accepted = Column(Integer, default=0)
+
     def __init__(self, db_path=DATABASE_SERVER):
         """
         Метод инициализации. В нём создаётся движок базы данных,
         создаются таблицы (при необходимости), объект сессии и очищается таблица активных пользователей.
         """
-        self.engine = create_engine(db_path, echo=False)
+        self.engine = create_engine(f'sqlite:///{db_path}', echo=False,
+                                    pool_recycle=7200, connect_args={'check_same_thread': False})
         self.Base.metadata.create_all(self.engine)
         self.session = sessionmaker(bind=self.engine)()
         self.session.query(self.ActiveUsers).delete()
@@ -71,6 +85,7 @@ class ServerStorage:
             user = self.Users(name=username, last_login=login_time)
             self.session.add(user)
             self.session.commit()
+            self.session.add(self.UsersHistory(user=user.id))
 
         active_users = {
             'user': user.id,
@@ -137,9 +152,58 @@ class ServerStorage:
             query = query.filter(self.Users.name == username)
         return query.all()
 
+    def process_message(self, sender, receiver):
+        sender_id = self.session.query(self.Users).filter_by(name=sender).first().id
+        receiver_id = self.session.query(self.Users).filter_by(name=receiver).first().id
+        sender_obj = self.session.query(self.UsersHistory).filter_by(user=sender_id).first()
+        receiver_obj = self.session.query(self.UsersHistory).filter_by(user=receiver_id).first()
+        sender_obj.sent += 1
+        receiver_obj.accepted += 1
+        self.session.commit()
+
+    def add_contact(self, user, contact):
+        user = self.session.query(self.Users).filter_by(name=user).first()
+        contact = self.session.query(self.Users).filter_by(name=contact).first()
+
+        if contact and not self.session.query(self.UsersContacts).filter_by(user=user.id, contact=contact.id).all():
+            contact_row = self.UsersContacts(user=user.id, contact=contact.id)
+            self.session.add(contact_row)
+            self.session.commit()
+
+    def remove_contact(self, user, contact):
+        user = self.session.query(self.Users).filter_by(name=user).first()
+        contact = self.session.query(self.Users).filter_by(name=contact).first()
+
+        if contact:
+            self.session.query(self.UsersContacts).filter(
+                self.UsersContacts.user == user.id,
+                self.UsersContacts.contact == contact.id
+            ).delete()
+            self.session.commit()
+
+    def get_contacts(self, username):
+        user = self.session.query(self.Users).filter_by(name=username).one()
+
+        query = self.session.query(
+            self.UsersContacts, self.Users.name
+        ).filter_by(user=user.id).join(
+            self.Users,
+            self.UsersContacts.contact == self.Users.id
+        )
+        return [contact[1] for contact in query.all()]
+
+    def message_history(self):
+        query = self.session.query(
+            self.Users.name,
+            self.Users.last_login,
+            self.UsersHistory.sent,
+            self.UsersHistory.accepted
+        ).join(self.Users)
+        return query.all()
+
 
 if __name__ == '__main__':
-    db = ServerStorage()
+    db = ServerStorage('sqlite:///test_db.db3')
     db.login_user('helen', '127.0.0.1', 8888)
     db.login_user('olga', '127.0.0.1', 8889)
     print('\nАктивные пользователи:')
@@ -153,4 +217,17 @@ if __name__ == '__main__':
     print(*db.login_history('olga'), sep='\n')
     print('\nВсе пользователи:')
     print(*db.users_all(), sep='\n')
-
+    db.add_contact('olga', 'helen')
+    db.add_contact('helen', 'olga')
+    db.process_message('olga', 'helen')
+    db.process_message('olga', 'helen')
+    db.process_message('helen', 'olga')
+    print('\nСписок контактов olga:')
+    print(*db.get_contacts('olga'), sep='\n')
+    print('\nСписок контактов helen:')
+    print(*db.get_contacts('helen'), sep='\n')
+    print('\nИстория сообщений:')
+    print(*db.message_history(), sep='\n')
+    db.remove_contact('helen', 'olga')
+    print('\nСписок контактов helen после удаления контакта olga:')
+    print(*db.get_contacts('helen'), sep='\n')

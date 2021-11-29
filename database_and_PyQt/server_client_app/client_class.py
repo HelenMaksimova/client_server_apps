@@ -17,6 +17,86 @@ LOG = logging.getLogger('client')
 LOG_F = logging.getLogger('client_func')
 
 
+class ClientSender:
+    pass
+
+
+class ClientReceiver(threading.Thread):
+
+    def __init__(self, client_name, transport, database):
+        self.client_name = client_name
+        self.transport = transport
+        self.database = database
+        self.transport_locker = threading.Lock()
+        self.database_locker = threading.Lock()
+        super().__init__()
+
+    def run(self):
+        """
+        Метод обработки сообщений с сервера от других клиентов
+        :return: None
+        """
+        while True:
+            time.sleep(1)
+            with self.transport_locker:
+                try:
+                    message = get_message(self.transport)
+                    if message.get(vrs.ACTION) == vrs.MESSAGE and \
+                            vrs.SENDER in message and vrs.MESSAGE_TEXT in message and \
+                            message.get(vrs.DESTINATION) == self.client_name:
+                        LOG.debug(f'{self.client_name}: Получено сообщение от {message[vrs.SENDER]}')
+                        print(f'\n<<{message[vrs.SENDER]}>> : {message[vrs.MESSAGE_TEXT]}')
+                        with self.database_locker:
+                            try:
+                                self.database.save_message(
+                                    message[vrs.SENDER], self.client_name, message[vrs.MESSAGE_TEXT])
+                            except Exception:
+                                LOG.error('Ошибка взаимодействия с базой данных')
+                    else:
+                        LOG.debug(f'{self.client_name}: Получено сообщение от сервера о некорректном запросе')
+                        print(f'\nПолучено сообщение от сервера о некорректном запросе: {message}')
+                except custom_exceptions.IncorrectData as error:
+                    LOG.error(f'Ошибка: {error}')
+                except (OSError, ConnectionError, ConnectionAbortedError,
+                        ConnectionResetError, json.JSONDecodeError):
+                    LOG.critical(f'Потеряно соединение с сервером.')
+                    break
+
+
+class ClientManager:
+
+    def prepare_transport(self):
+        """
+        Метод подготовки сокета клиента
+        :return: сокет клиента
+        """
+        try:
+            transport = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            transport.connect((self.server_address, self.server_port))
+        except ConnectionRefusedError:
+            LOG.critical(f'Не удалось подключиться к серверу {self.server_address}:{self.server_port}')
+            sys.exit(1)
+        return transport
+
+    def send_presence(self):
+        """
+        Метод отправки приветственного сообщения на сервер.
+        В случае ответа сервера об успешном подключении возвращает True
+        :return: True или False
+        """
+        try:
+            send_message(self.transport, self.create_message(vrs.PRESENCE))
+            answer = self.presence_answer()
+            LOG.info(f'Установлено соединение с сервером. Ответ сервера: {answer}')
+            print(f'Установлено соединение с сервером.')
+            return True if answer == '200 : OK' else False
+        except json.JSONDecodeError:
+            LOG.error('Не удалось декодировать полученную Json строку.')
+            sys.exit(1)
+        except custom_exceptions.NoResponseInServerMessage as error:
+            LOG.error(f'Ошибка сообщения сервера {self.server_address}: {error}')
+
+
 class Client(metaclass=ClientVerifier):
     """
     Класс клиента
@@ -78,29 +158,6 @@ class Client(metaclass=ClientVerifier):
             return f'400 : {server_message[vrs.ERROR]}'
         raise custom_exceptions.NoResponseInServerMessage
 
-    def process_server_message(self):
-        """
-        Метод обработки сообщений с сервера от других клиентов
-        :return: None
-        """
-        while True:
-            try:
-                server_message = get_message(self.transport)
-                if server_message.get(vrs.ACTION) == vrs.MESSAGE and \
-                        vrs.SENDER in server_message and vrs.MESSAGE_TEXT in server_message and \
-                        server_message.get(vrs.DESTINATION) == self.client_name:
-                    LOG.debug(f'{self.client_name}: Получено сообщение от {server_message[vrs.SENDER]}')
-                    print(f'\n<<{server_message[vrs.SENDER]}>> : {server_message[vrs.MESSAGE_TEXT]}')
-                else:
-                    LOG.debug(f'{self.client_name}: Получено сообщение от сервера о некорректном запросе')
-                    print(f'\nПолучено сообщение от сервера о некорректном запросе: {server_message}')
-            except custom_exceptions.IncorrectData as error:
-                LOG.error(f'Ошибка: {error}')
-            except (OSError, ConnectionError, ConnectionAbortedError,
-                    ConnectionResetError, json.JSONDecodeError):
-                LOG.critical(f'Потеряно соединение с сервером.')
-                break
-
     def send_message_to_server(self, to_client, message):
         """
         Метод отправки сообщений на сервер для других клиентов
@@ -116,21 +173,6 @@ class Client(metaclass=ClientVerifier):
             LOG.critical('Потеряно соединение с сервером.')
             sys.exit(1)
 
-    def prepare_transport(self):
-        """
-        Метод подготовки сокета клиента
-        :return: сокет клиента
-        """
-        try:
-            transport = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            # для проверки работы метакласса
-            # transport = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            # transport.listen()
-            transport.connect((self.server_address, self.server_port))
-        except ConnectionRefusedError:
-            LOG.critical(f'Не удалось подключиться к серверу {self.server_address}:{self.server_port}')
-            sys.exit(1)
-        return transport
 
     def user_interactive(self):
         """
@@ -153,23 +195,6 @@ class Client(metaclass=ClientVerifier):
             else:
                 print('Команда не распознана, попробойте снова. help - вывести поддерживаемые команды.')
 
-    def send_presence(self):
-        """
-        Метод отправки приветственного сообщения на сервер.
-        В случае ответа сервера об успешном подключении возвращает True
-        :return: True или False
-        """
-        try:
-            send_message(self.transport, self.create_message(vrs.PRESENCE))
-            answer = self.presence_answer()
-            LOG.info(f'Установлено соединение с сервером. Ответ сервера: {answer}')
-            print(f'Установлено соединение с сервером.')
-            return True if answer == '200 : OK' else False
-        except json.JSONDecodeError:
-            LOG.error('Не удалось декодировать полученную Json строку.')
-            sys.exit(1)
-        except custom_exceptions.NoResponseInServerMessage as error:
-            LOG.error(f'Ошибка сообщения сервера {self.server_address}: {error}')
 
     def run(self):
         """
