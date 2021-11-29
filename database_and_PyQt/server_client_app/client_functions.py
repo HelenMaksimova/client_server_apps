@@ -38,6 +38,7 @@ def add_contact(sock, username, contact):
         vrs.ACCOUNT_NAME: contact
     }
     send_request(sock, req)
+    print('Контакт успешно создан')
     LOG.debug('Удачное создание контакта.')
 
 
@@ -61,4 +62,5 @@ def remove_contact(sock, username, contact):
         vrs.ACCOUNT_NAME: contact
     }
     send_request(sock, req)
+    print('Контакт успешно удалён')
     LOG.debug('Удачное удаление')
