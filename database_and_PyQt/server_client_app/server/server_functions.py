@@ -1,8 +1,4 @@
-"""Программа-сервер"""
-import threading
-
 from server_class import Server, NewConnection
-from server_storage_class import ServerStorage
 from server_gui_classes import ServerGuiManager
 
 import configparser
@@ -12,7 +8,9 @@ import argparse
 
 def get_params(default_port, default_address):
     """
-    Метод получения параметров при запуске из комадной строки
+    Функция получения параметров при запуске из комадной строки
+    :param default_port: порт по умолчаию
+    :param default_address: адрес по умолчанию
     :return: кортеж параметров
     """
     parser = argparse.ArgumentParser()
@@ -23,13 +21,20 @@ def get_params(default_port, default_address):
 
 
 def get_config():
+    """
+    Функция получения конфигурации сервера из файла ini в конфигрутор
+    :return: конфигуратор
+    """
     config = configparser.ConfigParser()
     dir_path = os.path.dirname(os.path.realpath(__file__))
     config.read(f"{dir_path}/{'server.ini'}")
     return config
 
 
-def main():
+def start_server():
+    """
+    Функция, запускающая сервер
+    """
     new_connection = NewConnection()
 
     server_config = get_config()
@@ -46,7 +51,3 @@ def main():
     server_manager.start_timer()
     server_manager.show_main_window()
     server_manager.app.exec_()
-
-
-if __name__ == '__main__':
-    main()

@@ -1,10 +1,7 @@
 # libraries imports
-import argparse
 import logging
-import sys
 import select
 import threading
-import time
 from collections import deque
 from socket import socket, AF_INET, SOCK_STREAM, SOCK_DGRAM
 
@@ -12,8 +9,8 @@ from socket import socket, AF_INET, SOCK_STREAM, SOCK_DGRAM
 import common.variables as vrs
 import logs.server_log_config
 from common.utils import get_message, send_message
-from descriptors import Port, IpAddress
-from metaclasses import ServerVerifier
+from common.descriptors import Port, IpAddress
+from common.metaclasses import ServerVerifier
 from server_storage_class import ServerStorage
 
 
@@ -21,6 +18,9 @@ LOG = logging.getLogger('server')
 
 
 class NewConnection:
+    """
+    Класс-регулитор, объект которого хранит блокировщик потока и переменную-флаг
+    """
 
     def __init__(self):
         self.value = False
@@ -59,6 +59,8 @@ class Server(threading.Thread, metaclass=ServerVerifier):
         self.listen_port - прослушиваемый порт
         self.listen_address - прослушиваемый адрес
         self.transport - сокет сервера
+        self.new_connection - объект класса-регулятора
+        self.database - объект базы данных
         """
         self.clients_names = dict()
         self.clients_list = []
@@ -80,9 +82,6 @@ class Server(threading.Thread, metaclass=ServerVerifier):
         :return: сокет сервера
         """
         transport = socket(AF_INET, SOCK_STREAM)
-        # для проверки работы метакласса
-        # transport = socket(AF_INET, SOCK_DGRAM)
-        # transport.connect('127.0.0.1')
         transport.bind((self.listen_address, self.listen_port))
         transport.settimeout(1)
         transport.listen(vrs.MAX_CONNECTIONS)
@@ -203,11 +202,12 @@ class Server(threading.Thread, metaclass=ServerVerifier):
                           f'отправка сообщения невозможна.')
 
     def run(self):
-        LOG.info(f'Запущен сервер. Порт подключений: {self.listen_port}, адрес прослушивания: {self.listen_address}')
         """
         Основной метод сервера
         :return: None
         """
+
+        LOG.info(f'Запущен сервер. Порт подключений: {self.listen_port}, адрес прослушивания: {self.listen_address}')
         while True:
             try:
                 client, client_address = self.transport.accept()

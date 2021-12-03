@@ -26,7 +26,7 @@ class ClientStorage:
         name = Column(String)
 
     def __init__(self, username):
-        self.engine = create_engine(f'sqlite:///client_{username}.db3', echo=False, pool_recycle=7200,
+        self.engine = create_engine(f'sqlite:///client/client_{username}.db3', echo=False, pool_recycle=7200,
                                     connect_args={'check_same_thread': False})
         self.Base.metadata.create_all(self.engine)
         self.session = sessionmaker(bind=self.engine)()

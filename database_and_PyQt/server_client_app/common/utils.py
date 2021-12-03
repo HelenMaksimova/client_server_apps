@@ -2,7 +2,7 @@
 
 import json
 from common.variables import MAX_PACKAGE_LENGTH, ENCODING
-import custom_exceptions
+import common.custom_exceptions as custom_exceptions
 
 
 def get_message(socket):

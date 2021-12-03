@@ -39,10 +39,10 @@ while True:
     if action == "q":
         break
     elif action == "s":
-        process.append(get_subprocess("server.py"))
+        process.append(get_subprocess("server/server.py"))
 
         for i in range(count):
-            process.append(get_subprocess(f"client.py -n test_{i}"))
+            process.append(get_subprocess(f"client/client.py -n test_{i}"))
 
     elif action == "x":
         while process:

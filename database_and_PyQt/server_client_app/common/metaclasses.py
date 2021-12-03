@@ -1,6 +1,6 @@
 import dis
 from types import FunctionType
-import custom_exceptions
+import common.custom_exceptions as custom_exceptions
 from socket import SocketType
 
 

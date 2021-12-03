@@ -2,7 +2,7 @@ import logging
 import time
 
 import common.variables as vrs
-import custom_exceptions
+import common.custom_exceptions as custom_exceptions
 from common.utils import send_message, get_message
 
 LOG = logging.getLogger('client')
