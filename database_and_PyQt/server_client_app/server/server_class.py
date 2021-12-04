@@ -11,7 +11,7 @@ import logs.server_log_config
 from common.utils import get_message, send_message
 from common.descriptors import Port, IpAddress
 from common.metaclasses import ServerVerifier
-from server_storage_class import ServerStorage
+from server.server_storage_class import ServerStorage
 
 
 LOG = logging.getLogger('server')

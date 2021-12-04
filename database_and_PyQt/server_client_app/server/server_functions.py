@@ -1,5 +1,5 @@
-from server_class import Server, NewConnection
-from server_gui_classes import ServerGuiManager
+from server.server_class import Server, NewConnection
+from server.server_gui_classes import ServerGuiManager
 
 import configparser
 import os

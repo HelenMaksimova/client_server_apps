@@ -182,7 +182,7 @@ class ServerStorage:
             self.session.commit()
 
     def get_contacts(self, username):
-        user = self.session.query(self.Users).filter_by(name=username).one()
+        user = self.session.query(self.Users).filter_by(name=username).first()
 
         query = self.session.query(
             self.UsersContacts, self.Users.name
@@ -190,6 +190,7 @@ class ServerStorage:
             self.Users,
             self.UsersContacts.contact == self.Users.id
         )
+        result = [contact[1] for contact in query.all()]
         return [contact[1] for contact in query.all()]
 
     def message_history(self):

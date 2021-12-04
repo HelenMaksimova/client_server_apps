@@ -7,8 +7,14 @@
     <x>0</x>
     <y>0</y>
     <width>828</width>
-    <height>646</height>
+    <height>678</height>
    </rect>
+  </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
   </property>
   <property name="palette">
    <palette>
@@ -138,8 +144,11 @@
       <x>10</x>
       <y>50</y>
       <width>256</width>
-      <height>541</height>
+      <height>581</height>
      </rect>
+    </property>
+    <property name="editTriggers">
+     <set>QAbstractItemView::NoEditTriggers</set>
     </property>
    </widget>
    <widget class="QLabel" name="contacts_label">
@@ -164,7 +173,7 @@
     <property name="geometry">
      <rect>
       <x>290</x>
-      <y>520</y>
+      <y>560</y>
       <width>471</width>
       <height>71</height>
      </rect>
@@ -174,7 +183,7 @@
     <property name="geometry">
      <rect>
       <x>770</x>
-      <y>520</y>
+      <y>560</y>
       <width>41</width>
       <height>31</height>
      </rect>
@@ -200,7 +209,7 @@
     <property name="geometry">
      <rect>
       <x>770</x>
-      <y>560</y>
+      <y>600</y>
       <width>41</width>
       <height>31</height>
      </rect>
@@ -228,7 +237,7 @@
       <x>290</x>
       <y>50</y>
       <width>521</width>
-      <height>461</height>
+      <height>471</height>
      </rect>
     </property>
    </widget>
@@ -237,7 +246,7 @@
      <rect>
       <x>290</x>
       <y>20</y>
-      <width>181</width>
+      <width>521</width>
       <height>16</height>
      </rect>
     </property>
@@ -302,6 +311,24 @@
      <bool>true</bool>
     </property>
    </widget>
+   <widget class="QLabel" name="message_label">
+    <property name="geometry">
+     <rect>
+      <x>290</x>
+      <y>530</y>
+      <width>521</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>12</pointsize>
+     </font>
+    </property>
+    <property name="text">
+     <string>Введите сообщение:</string>
+    </property>
+   </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
@@ -312,10 +339,11 @@
      <height>20</height>
     </rect>
    </property>
-   <widget class="QMenu" name="exit_menu">
+   <widget class="QMenu" name="fail_menu">
     <property name="title">
-     <string>Выход</string>
+     <string>Файл</string>
     </property>
+    <addaction name="exit_point"/>
    </widget>
    <widget class="QMenu" name="conatcs_menu">
     <property name="title">
@@ -324,7 +352,7 @@
     <addaction name="add_contact_point"/>
     <addaction name="del_contact_point"/>
    </widget>
-   <addaction name="exit_menu"/>
+   <addaction name="fail_menu"/>
    <addaction name="conatcs_menu"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
@@ -336,6 +364,11 @@
   <action name="del_contact_point">
    <property name="text">
     <string>Удалить контакт</string>
+   </property>
+  </action>
+  <action name="exit_point">
+   <property name="text">
+    <string>Выход</string>
    </property>
   </action>
  </widget>
