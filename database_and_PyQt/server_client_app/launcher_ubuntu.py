@@ -19,7 +19,7 @@ TEXT_FOR_INPUT = "Выберите действие: q - выход, s - зап�
 
 def get_params():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-cn', type=int, default=3)
+    parser.add_argument('-cn', type=int, default=2)
     params = parser.parse_args()
     return params.cn
 
@@ -42,7 +42,7 @@ while True:
         process.append(get_subprocess("server.py"))
 
         for i in range(count):
-            process.append(get_subprocess(f"client.py -n test_{i}"))
+            process.append(get_subprocess(f"client.py"))
 
     elif action == "x":
         while process:
