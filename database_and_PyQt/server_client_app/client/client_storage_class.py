@@ -82,3 +82,6 @@ class ClientStorage:
         query = self.session.query(self.MessageHistory).filter_by(user=user)
         return [(history_row.user, history_row.destination, history_row.message, history_row.date)
                 for history_row in query.all()]
+
+    def contacts_clear(self):
+        self.session.query(self.Contacts).delete()

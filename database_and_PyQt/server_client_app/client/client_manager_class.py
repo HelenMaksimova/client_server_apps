@@ -1,6 +1,9 @@
 import argparse
 import logging
+import os
 import sys
+
+from Cryptodome.PublicKey import RSA
 
 from client.client_classes import Client
 from client.client_storage_class import ClientStorage
@@ -21,6 +24,19 @@ class ClientManager:
 
     def __init__(self):
         self.server_port, self.server_address, self.client_name = self.get_params()
+        self.password = None
+
+    def get_keys(self):
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        key_file = os.path.join(dir_path, f'{self.client_name}.key')
+        if not os.path.exists(key_file):
+            keys = RSA.generate(2048, os.urandom)
+            with open(key_file, 'wb') as key:
+                key.write(keys.export_key())
+        else:
+            with open(key_file, 'rb') as key:
+                keys = RSA.import_key(key.read())
+        return keys
 
     def get_params(self):
         """
@@ -43,25 +59,32 @@ class ClientManager:
     def run(self):
         app = QApplication(sys.argv)
 
-        if not self.client_name:
-            dialog = InputUsernameDialog()
-            app.exec_()
-            if dialog.ok_pressed:
-                self.client_name = dialog.ui.lineEdit.text()
-                del dialog
-            else:
-                exit(0)
+        dialog = InputUsernameDialog()
+        if self.client_name:
+            dialog.ui.user_login.setText(self.client_name)
+        app.exec_()
+        if dialog.ok_pressed:
+            self.client_name = dialog.ui.user_login.text()
+            self.password = dialog.ui.user_password.text()
+            del dialog
+        else:
+            exit(0)
 
         database = ClientStorage(self.client_name)
 
-        client = Client(self.client_name, database, self.server_address, self.server_port)
+        keys = self.get_keys()
+
+        client = Client(self.client_name, self.password, database, self.server_address, self.server_port, keys)
         client.setDaemon(True)
-        client.start()
+        if client.connection:
+            client.start()
 
-        main_window = MainWindow(client, database)
-        main_window.setWindowTitle(f'Чат Программа alpha release - {self.client_name}')
-        app.exec_()
+            main_window = MainWindow(client, database)
+            main_window.setWindowTitle(f'Чат Программа alpha release - {self.client_name}')
+            app.exec_()
 
-        client.client_shutdown()
-        client.join()
+            client.client_shutdown()
+            client.join()
+        else:
+            exit(0)
 

@@ -30,8 +30,9 @@ class InputUsernameDialog(QDialog):
         self.show()
 
     def press_ok(self):
-        username = self.ui.lineEdit.text()
-        if username:
+        username = self.ui.user_login.text()
+        password = self.ui.user_password.text()
+        if username and password:
             self.ok_pressed = True
             qApp.exit(0)
 

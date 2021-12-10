@@ -1,10 +1,13 @@
+import binascii
+import hashlib
 import sys
 
-from PyQt5.QtWidgets import QMainWindow, QAction, qApp, QApplication, QLabel, QTableView, QDialog, QPushButton, \
-    QLineEdit, QFileDialog, QMessageBox
+from PyQt5.QtWidgets import QMainWindow, QAction, qApp, QApplication, QLabel, QTableView, QMessageBox
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from PyQt5.QtCore import QTimer
 import configparser
+
+from server.server_gui_dialog_classes import HistoryWindow, ConfigWindow, RegisterUser, DelUserDialog
 
 
 class UsersListModel(QStandardItemModel):
@@ -73,7 +76,7 @@ class MainWindow(QMainWindow):
         self.create_widgets()
 
     def create_widgets(self):
-        self.setFixedSize(800, 600)
+        self.setFixedSize(850, 600)
         self.setWindowTitle('Сервер сообщений - alpha')
 
         exit_btn = QAction('Выход', self)
@@ -83,8 +86,19 @@ class MainWindow(QMainWindow):
         self.renew_btn = QAction('Обновить список', self)
         self.settings_btn = QAction('Настройки сервера', self)
         self.history_btn = QAction('История клиентов', self)
+        self.add_user_btn = QAction('Зарегистрировать клиента', self)
+        self.del_user_btn = QAction('Удалить клиента', self)
 
-        self.menuBar().addActions([exit_btn, self.renew_btn, self.settings_btn, self.history_btn])
+        actions = [
+            exit_btn,
+            self.renew_btn,
+            self.settings_btn,
+            self.history_btn,
+            self.add_user_btn,
+            self.del_user_btn
+        ]
+
+        self.menuBar().addActions(actions)
 
         label = QLabel('Список подключённых клиентов:', self)
         label.setFixedSize(250, 16)
@@ -92,97 +106,17 @@ class MainWindow(QMainWindow):
 
         self.active_clients_table = QTableView(self)
         self.active_clients_table.move(10, 50)
-        self.active_clients_table.setFixedSize(780, 500)
+        self.active_clients_table.setFixedSize(830, 500)
 
         self.statusBar()
 
 
-class HistoryWindow(QDialog):
-    def __init__(self):
-        super().__init__()
-        self.create_widgets()
-
-    def create_widgets(self):
-        self.setWindowTitle('Статистика клиентов')
-        self.setFixedSize(700, 650)
-
-        self.close_button = QPushButton('Закрыть', self)
-        self.close_button.move(300, 600)
-        self.close_button.clicked.connect(self.hide)
-
-        self.history_table = QTableView(self)
-        self.history_table.move(10, 10)
-        self.history_table.setFixedSize(680, 580)
-
-
-class ConfigWindow(QDialog):
-    def __init__(self):
-        super().__init__()
-        self.create_widgets()
-
-    def create_widgets(self):
-        self.setFixedSize(365, 260)
-        self.setWindowTitle('Настройки сервера')
-
-        self.db_path_label = QLabel('Путь до файла базы данных: ', self)
-        self.db_path_label.move(10, 10)
-        self.db_path_label.setFixedSize(240, 15)
-
-        self.db_path = QLineEdit(self)
-        self.db_path.setFixedSize(250, 20)
-        self.db_path.move(10, 30)
-        self.db_path.setReadOnly(True)
-
-        self.db_path_select = QPushButton('Обзор...', self)
-        self.db_path_select.move(275, 28)
-        self.db_path_select.clicked.connect(self.open_file_dialog)
-
-        self.db_file_label = QLabel('Имя файла базы данных: ', self)
-        self.db_file_label.move(10, 68)
-        self.db_file_label.setFixedSize(180, 15)
-
-        self.db_file = QLineEdit(self)
-        self.db_file.move(200, 66)
-        self.db_file.setFixedSize(150, 20)
-
-        self.port_label = QLabel('Номер порта для соединений:', self)
-        self.port_label.move(10, 108)
-        self.port_label.setFixedSize(180, 15)
-
-        self.port = QLineEdit(self)
-        self.port.move(200, 108)
-        self.port.setFixedSize(150, 20)
-
-        self.ip_label = QLabel('С какого IP принимаем соединения:', self)
-        self.ip_label.move(10, 148)
-        self.ip_label.setFixedSize(180, 15)
-
-        self.ip_label_note = QLabel(' оставьте это поле пустым, чтобы\n принимать соединения с любых адресов.', self)
-        self.ip_label_note.move(10, 168)
-        self.ip_label_note.setFixedSize(500, 30)
-
-        self.ip = QLineEdit(self)
-        self.ip.move(200, 148)
-        self.ip.setFixedSize(150, 20)
-
-        self.save_btn = QPushButton('Сохранить', self)
-        self.save_btn.move(190, 220)
-
-        self.close_button = QPushButton('Закрыть', self)
-        self.close_button.move(275, 220)
-        self.close_button.clicked.connect(self.hide)
-
-    def open_file_dialog(self):
-        self.dialog = QFileDialog(self)
-        path = self.dialog.getExistingDirectory()
-        self.db_path.insert(path)
-
-
 class ServerGuiManager:
 
-    def __init__(self, database, new_connection, config=None):
+    def __init__(self, database, new_connection, server, config=None):
         self.app = QApplication(sys.argv)
         self.database = database
+        self.server = server
         self.new_connection = new_connection
         self.create_widgets()
         self.config = config if config else configparser.ConfigParser()
@@ -201,9 +135,17 @@ class ServerGuiManager:
 
         self.config_window = ConfigWindow()
 
+        self.add_user_window = RegisterUser()
+        self.add_user_window.btn_ok.clicked.connect(self.save_data)
+
+        self.del_user_window = DelUserDialog()
+        self.del_user_window.btn_ok.clicked.connect(self.remove_user)
+
         self.main_window.history_btn.triggered.connect(self.show_history_window)
         self.main_window.renew_btn.triggered.connect(self.renew_users_list)
         self.main_window.settings_btn.triggered.connect(self.show_settings_window)
+        self.main_window.add_user_btn.triggered.connect(self.show_add_user_window)
+        self.main_window.del_user_btn.triggered.connect(self.show_del_user_window)
 
         self.config_window.save_btn.clicked.connect(self.save_server_settings)
 
@@ -221,12 +163,61 @@ class ServerGuiManager:
     def show_settings_window(self):
         self.config_window.show()
 
+    def show_add_user_window(self):
+        self.add_user_window.client_name.clear()
+        self.add_user_window.client_passwd.clear()
+        self.add_user_window.client_conf.clear()
+        self.add_user_window.show()
+
+    def show_del_user_window(self):
+        self.all_users_fill()
+        self.del_user_window.show()
+
     def renew_users_list(self):
         if self.new_connection.value:
             self.table_model.fill_from_db()
             self.main_window.active_clients_table.resizeColumnsToContents()
             with self.new_connection.locker:
                 self.new_connection.value = False
+
+    def all_users_fill(self):
+        self.del_user_window.selector.clear()
+        self.del_user_window.selector.addItems([item[0] for item in self.database.users_all()])
+
+    def remove_user(self):
+        self.database.remove_user(self.del_user_window.selector.currentText())
+        if self.del_user_window.selector.currentText() in self.server.clients_names:
+            sock = self.server.clients_names[self.del_user_window.selector.currentText()]
+            del self.server.clients_names[self.del_user_window.selector.currentText()]
+            self.server.remove_client(sock)
+        self.server.service_update_lists()
+        self.del_user_window.hide()
+
+    def save_data(self):
+        if not self.add_user_window.client_name.text():
+            self.add_user_window.messages.critical(
+                self.add_user_window, 'Ошибка', 'Не указано имя пользователя.')
+            return
+        elif self.add_user_window.client_passwd.text() != self.add_user_window.client_conf.text():
+            self.add_user_window.messages.critical(
+                self.add_user_window, 'Ошибка', 'Введённые пароли не совпадают.')
+            return
+        elif self.database.check_user(self.add_user_window.client_name.text()):
+            self.add_user_window.messages.critical(
+                self.add_user_window, 'Ошибка', 'Пользователь уже существует.')
+            return
+        else:
+            passwd_bytes = self.add_user_window.client_passwd.text().encode('utf-8')
+            salt = self.add_user_window.client_name.text().lower().encode('utf-8')
+            passwd_hash = hashlib.pbkdf2_hmac(
+                'sha512', passwd_bytes, salt, 10000)
+            self.database.add_user(
+                self.add_user_window.client_name.text(),
+                binascii.hexlify(passwd_hash))
+            self.add_user_window.messages.information(
+                self.add_user_window, 'Успех', 'Пользователь успешно зарегистрирован.')
+            self.server.service_update_lists()
+            self.add_user_window.hide()
 
     def save_server_settings(self):
         message = QMessageBox()

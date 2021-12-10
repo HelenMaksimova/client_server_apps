@@ -1,4 +1,6 @@
-import datetime
+import binascii
+import hashlib
+import hmac
 import logging
 import socket
 import sys
@@ -11,23 +13,25 @@ import common.custom_exceptions as custom_exceptions
 import common.variables as vrs
 import logs.client_log_config
 from common.utils import send_message, get_message
-from client.client_functions import user_list_request, contacts_list_request, add_contact, remove_contact
 
 LOG = logging.getLogger('client')
 
 
 class Client(threading.Thread, QObject):
 
-    new_message = pyqtSignal(str)
+    new_message = pyqtSignal(dict)
     connection_lost = pyqtSignal()
+    message_205 = pyqtSignal()
 
-    def __init__(self, client_name, database, server_address, server_port):
+    def __init__(self, client_name, password, database, server_address, server_port, keys):
         threading.Thread.__init__(self)
         QObject.__init__(self)
         self.client_name = client_name
+        self.password = password
         self.database = database
         self.server_address = server_address
         self.server_port = server_port
+        self.keys = keys
         self.transport = self.prepare_transport()
         self.connection = self.send_presence()
         self.database_locker = threading.Lock()
@@ -46,15 +50,23 @@ class Client(threading.Thread, QObject):
         return transport
 
     def send_presence(self):
+        passwd_bytes = self.password.encode('utf-8')
+        salt = self.client_name.lower().encode('utf-8')
+        passwd_hash = hashlib.pbkdf2_hmac('sha512', passwd_bytes, salt, 10000)
+        passwd_hash_string = binascii.hexlify(passwd_hash)
+        pubkey = self.keys.publickey().export_key().decode('ascii')
+
+        LOG.debug(f'Passwd hash ready: {passwd_hash_string}')
+
         try:
             message = {
                 vrs.ACTION: vrs.PRESENCE,
                 vrs.TIME: time.time(),
                 vrs.PORT: self.server_port,
-                vrs.USER: {vrs.ACCOUNT_NAME: self.client_name}
+                vrs.USER: {vrs.ACCOUNT_NAME: self.client_name, vrs.PUBLIC_KEY: pubkey}
             }
             send_message(self.transport, message)
-            answer = self.presence_answer()
+            answer = self.presence_answer(passwd_hash_string)
             LOG.info(f'Установлено соединение с сервером. Ответ сервера: {answer}')
             print(f'Установлено соединение с сервером.')
             return True if answer == '200 : OK' else False
@@ -64,11 +76,22 @@ class Client(threading.Thread, QObject):
         except custom_exceptions.NoResponseInServerMessage as error:
             LOG.error(f'Ошибка сообщения сервера {self.server_address}: {error}')
 
-    def presence_answer(self):
+    def presence_answer(self, passwd_hash_string):
         server_message = get_message(self.transport)
         if vrs.RESPONSE in server_message:
             if server_message[vrs.RESPONSE] == 200:
                 return '200 : OK'
+            elif server_message[vrs.RESPONSE] == 511:
+                ans_data = server_message[vrs.DATA]
+                hash_string = hmac.new(passwd_hash_string, ans_data.encode('utf-8'), 'MD5')
+                digest = hash_string.digest()
+                my_ans = {
+                    vrs.RESPONSE: 511,
+                    vrs.DATA: binascii.b2a_base64(digest).decode('ascii')
+                }
+                send_message(self.transport, my_ans)
+                result = self.presence_answer(passwd_hash_string)
+                return result
             return f'400 : {server_message[vrs.ERROR]}'
         raise custom_exceptions.NoResponseInServerMessage
 
@@ -97,7 +120,6 @@ class Client(threading.Thread, QObject):
             if not self.database.check_user(to_client):
                 LOG.error(f'Попытка отправить сообщение незарегистрированому получателю: {to_client}')
                 return
-            self.database.save_message('out', to_client, message)
         with self.transport_locker:
             try:
                 send_message(self.transport, message_to_send)
@@ -114,52 +136,86 @@ class Client(threading.Thread, QObject):
                 vrs.SENDER in message and vrs.MESSAGE_TEXT in message and \
                 message.get(vrs.DESTINATION) == self.client_name:
             LOG.debug(f'{self.client_name}: Получено сообщение от {message[vrs.SENDER]}')
-            with self.database_locker:
-                try:
-                    self.database.save_message(
-                        'in', message[vrs.SENDER], message[vrs.MESSAGE_TEXT])
-                    self.new_message.emit(message[vrs.SENDER])
-                except Exception:
-                    LOG.error('Ошибка взаимодействия с базой данных')
+            self.new_message.emit(message)
+        elif message.get(vrs.RESPONSE) == 205:
+            self.user_list_update()
+            self.contacts_list_update()
+            self.message_205.emit()
         else:
             LOG.debug(f'{self.client_name}: Получено сообщение от сервера о некорректном запросе')
 
     def user_list_update(self):
-        try:
-            with self.transport_locker:
-                users_list = user_list_request(self.transport, self.client_name)
-        except custom_exceptions.NoResponseInServerMessage:
-            LOG.error('Ошибка запроса списка известных пользователей.')
+        LOG.debug(f'Запрос списка известных пользователей {self.client_name}')
+        req = {
+            vrs.ACTION: vrs.USERS_REQUEST,
+            vrs.TIME: time.time(),
+            vrs.ACCOUNT_NAME: self.client_name
+        }
+        with self.transport_locker:
+            send_message(self.transport, req)
+            ans = get_message(self.transport)
+        if vrs.RESPONSE in ans and ans[vrs.RESPONSE] == 202:
+            self.database.add_users(ans[vrs.LIST_INFO])
         else:
-            with self.database_locker:
-                self.database.add_users(users_list)
+            LOG.error('Не удалось обновить список известных пользователей.')
 
     def contact_list_update(self):
-        try:
-            with self.transport_locker:
-                contacts_list = contacts_list_request(self.transport, self.client_name)
-        except custom_exceptions.NoResponseInServerMessage:
-            LOG.error('Ошибка запроса списка контактов.')
+        self.database.contacts_clear()
+        LOG.debug(f'Запрос контакт листа для пользователся {self.client_name}')
+        req = {
+            vrs.ACTION: vrs.GET_CONTACTS,
+            vrs.TIME: time.time(),
+            vrs.USER: self.client_name
+        }
+        LOG.debug(f'Сформирован запрос {req}')
+        with self.transport_locker:
+            send_message(self.transport, req)
+            ans = get_message(self.transport)
+        LOG.debug(f'Получен ответ {ans}')
+        if vrs.RESPONSE in ans and ans[vrs.RESPONSE] == 202:
+            for contact in ans[vrs.LIST_INFO]:
+                self.database.add_contact(contact)
         else:
-            with self.database_locker:
-                for contact in contacts_list:
-                    self.database.add_contact(contact)
+            LOG.error('Не удалось обновить список контактов.')
 
     def add_contact(self, contact):
-        try:
-            with self.transport_locker:
-                add_contact(self.transport, self.client_name, contact)
-                LOG.debug(f'{self.client_name}: Успешно добавлен контакт {contact}')
-        except custom_exceptions.NoResponseInServerMessage:
-            LOG.debug(f'{self.client_name}: Не удалось добавить контакт {contact}')
+        LOG.debug(f'Создание контакта {contact}')
+        req = {
+            vrs.ACTION: vrs.ADD_CONTACT,
+            vrs.TIME: time.time(),
+            vrs.USER: self.client_name,
+            vrs.ACCOUNT_NAME: contact
+        }
+        with self.transport_locker:
+            send_message(self.transport, req)
+            self.get_message_from_server(get_message(self.transport))
 
     def remove_contact(self, contact):
-        try:
-            with self.transport_locker:
-                remove_contact(self.transport, self.client_name, contact)
-                LOG.debug(f'{self.client_name}: Успешно удалён контакт {contact}')
-        except custom_exceptions.NoResponseInServerMessage:
-            LOG.debug(f'{self.client_name}: Не удалось удалить контакт {contact}')
+        LOG.debug(f'Удаление контакта {contact}')
+        req = {
+            vrs.ACTION: vrs.REMOVE_CONTACT,
+            vrs.TIME: time.time(),
+            vrs.USER: self.client_name,
+            vrs.ACCOUNT_NAME: contact
+        }
+        with self.transport_locker:
+            send_message(self.transport, req)
+            self.get_message_from_server(get_message(self.transport))
+
+    def get_user_pubkey(self, user):
+        LOG.debug(f'Запрос публичного ключа для {user}')
+        req = {
+            vrs.ACTION: vrs.PUBLIC_KEY_REQUEST,
+            vrs.TIME: time.time(),
+            vrs.ACCOUNT_NAME: user
+        }
+        with self.transport_locker:
+            send_message(self.transport, req)
+            ans = get_message(self.transport)
+        if vrs.RESPONSE in ans and ans[vrs.RESPONSE] == 511:
+            return ans[vrs.DATA]
+        else:
+            LOG.error(f'Не удалось получить ключ собеседника{user}.')
 
     def client_shutdown(self):
         self.connection = False

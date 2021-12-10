@@ -47,7 +47,7 @@ def start_server():
     server.daemon = True
     server.start()
 
-    server_manager = ServerGuiManager(server.database, new_connection, server_config)
+    server_manager = ServerGuiManager(server.database, new_connection, server, server_config)
     server_manager.start_timer()
     server_manager.show_main_window()
     server_manager.app.exec_()
