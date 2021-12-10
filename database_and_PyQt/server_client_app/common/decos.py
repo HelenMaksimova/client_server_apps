@@ -1,3 +1,8 @@
+"""
+Модуль декораторов
+"""
+
+
 import inspect
 import logging
 import logs.client_log_config

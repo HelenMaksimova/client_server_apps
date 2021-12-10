@@ -21,6 +21,8 @@ USER = 'user'
 ACCOUNT_NAME = 'account_name'
 PORT = 'port'
 SENDER = 'sender'
+PUBLIC_KEY = 'pubkey'
+DATA = 'bin'
 
 # Прочие ключи, используемые в протоколе
 PRESENCE = 'presence'
@@ -36,6 +38,8 @@ REMOVE_CONTACT = 'remove'
 ADD_CONTACT = 'add'
 USERS_REQUEST = 'get_users'
 RESPONDEFAULT_IP_ADDRESSSE = 'respondefault_ip_addressse'
+PUBLIC_KEY_REQUEST = 'pubkey_need'
+
 
 # логирование
 LOG_DIRECTORY = 'data'

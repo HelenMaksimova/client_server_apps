@@ -1,7 +1,13 @@
+"""
+Модуль метаклассов
+"""
+
+
 import dis
 from types import FunctionType
-import common.custom_exceptions as custom_exceptions
 from socket import SocketType
+
+import common.custom_exceptions as custom_exceptions
 
 
 class ServerVerifier(type):

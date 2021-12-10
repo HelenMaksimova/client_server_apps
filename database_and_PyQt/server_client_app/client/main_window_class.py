@@ -1,21 +1,36 @@
-import datetime
+"""
+Модуль основных GUI-классов
+"""
 
+
+import base64
+
+from Cryptodome.Cipher import PKCS1_OAEP
+from Cryptodome.PublicKey import RSA
 from PyQt5.QtCore import pyqtSlot, Qt
 from PyQt5.QtGui import QStandardItemModel, QStandardItem, QBrush, QColor
 from PyQt5.QtWidgets import QMainWindow, qApp, QApplication, QMessageBox
-from PyQt5 import uic
-import sys
 from client.dialog_window_classes import AddContactDialog, DelContactDialog
 from client.ui import main_window
+import common.variables as vrs
 
 
 class HistoryModel(QStandardItemModel):
+    """
+    Класс модели истории сообщений
+    """
 
     def __init__(self, database):
+        """
+        Метод инициализации
+        """
         super().__init__()
         self.database = database
 
     def update_model(self, username):
+        """
+        Метод обновления модели
+        """
         self.clear()
         data = self.database.get_user_history(username)
         data.sort(key=lambda x: x[3], reverse=True)
@@ -35,11 +50,21 @@ class HistoryModel(QStandardItemModel):
 
 
 class ContactsModel(QStandardItemModel):
+    """
+    Класс модели списка контактов пользователя
+    """
+
     def __init__(self, database):
+        """
+        Метод инициализации
+        """
         super().__init__()
         self.database = database
 
     def update_model(self):
+        """
+        Метод обновления модели
+        """
         self.clear()
         data = (QStandardItem(item) for item in self.database.get_contacts())
         for row in data:
@@ -47,8 +72,17 @@ class ContactsModel(QStandardItemModel):
 
 
 class MainWindow(QMainWindow):
+    """
+    Класс основного окна приложения клиента
+    """
 
     def __init__(self, client, database):
+        """
+        Метод инициализации. Задаются основные параметры
+        (объект бэк-энда - client, объект базы данных, объекты шифровки и дешифровки и т.д.).
+        Устанавливаются модели, создаются объекты дополнительных окон, назначаются обработчики событий для элементов,
+        выполняется подключение слотов к внешним объектам. После чего окно отображается.
+        """
         super().__init__()
         self.ui = main_window.Ui_MainWindow()
         self.ui.setupUi(self)
@@ -56,6 +90,9 @@ class MainWindow(QMainWindow):
         self.client = client
         self.database = database
         self.current_chat = None
+        self.current_chat_key = None
+        self.encryptor = None
+        self.decrypter = PKCS1_OAEP.new(client.keys)
 
         self.contacts_model = ContactsModel(self.database)
         self.history_model = HistoryModel(self.database)
@@ -86,40 +123,75 @@ class MainWindow(QMainWindow):
         self.show()
 
     def change_to_disabled(self):
+        """
+        Метод изменения доступности элементов (на недоступные)
+        """
         self.history_model.clear()
+        self.ui.history_label.setText('История сообщений')
         self.ui.message_label.setText('Дважды кликните на получателе в окне контактов.')
         self.ui.message_text_area.setDisabled(True)
         self.ui.send_message_btn.setDisabled(True)
         self.ui.clear_text_area_btn.setDisabled(True)
 
     def change_to_enabled(self):
+        """
+        Метод изменения доступности элементов (на доступные)
+        """
         self.ui.message_label.setText('Введите сообщение')
         self.ui.message_text_area.setDisabled(False)
         self.ui.send_message_btn.setDisabled(False)
         self.ui.clear_text_area_btn.setDisabled(False)
 
     def send_message(self):
+        """
+        Метод отправки сообщений (с шифрованием)
+        """
         message_text = self.ui.message_text_area.toPlainText()
         self.ui.message_text_area.clear()
         if message_text:
+            message_text_encrypted = self.encryptor.encrypt(message_text.encode('utf8'))
+            message_text_encrypted_base64 = base64.b64encode(message_text_encrypted)
             try:
-                self.client.send_message_to_server(self.current_chat, message_text)
+                self.client.send_message_to_server(self.current_chat, message_text_encrypted_base64.decode('ascii'))
             except (ConnectionResetError, ConnectionAbortedError):
                 self.close()
             else:
+                self.database.save_message('out', self.current_chat, message_text)
                 self.history_model.update_model(self.current_chat)
 
     def set_current_chat(self):
+        """
+        Метод установки текущего чата по выделенному элементу в списке контактов
+        """
         self.current_chat = self.ui.contacts_list.currentIndex().data()
         self.select_contact()
 
     def select_contact(self):
+        """
+        Метод установки текущего чата
+        """
         self.ui.history_label.setText(f'История сообщений с {self.current_chat}')
         self.history_model.update_model(self.current_chat)
         self.change_to_enabled()
+        self.current_chat_key = self.client.get_user_pubkey(self.current_chat)
+        if self.current_chat_key:
+            self.encryptor = PKCS1_OAEP.new(
+                RSA.import_key(self.current_chat_key))
 
-    @pyqtSlot(str)
-    def message(self, sender):
+    @pyqtSlot(dict)
+    def message(self, message):
+        """
+        Метод-слот при получении сообщения (с дешифровкой)
+        """
+        sender = message[vrs.SENDER]
+        encrypted_message = base64.b64decode(message[vrs.MESSAGE_TEXT])
+        try:
+            decrypted_message = self.decrypter.decrypt(encrypted_message)
+        except (ValueError, TypeError):
+            self.messages.warning(
+                self, 'Ошибка', 'Не удалось декодировать сообщение.')
+            return
+        self.database.save_message('in', self.current_chat, decrypted_message.decode('utf8'))
         if sender == self.current_chat:
             self.history_model.update_model(self.current_chat)
         else:
@@ -145,22 +217,40 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot()
     def connection_lost(self):
+        """
+        Метод-слот при потере соединения с сервером
+        """
         self.messages.warning(self, 'Сбой соединения', 'Потеряно соединение с сервером. ')
         self.close()
 
     @pyqtSlot()
     def contacts_changed(self):
+        """
+        Метод-слот при изменении списка контактов
+        """
+        self.contacts_model.update_model()
+
+    @pyqtSlot()
+    def sig_205(self):
+        """
+        Метод-слот при изменении списка пользователей на сервере
+        """
+        if self.current_chat and not self.database.check_user(
+                self.current_chat):
+            self.messages.warning(
+                self,
+                'Сочувствую',
+                'К сожалению собеседник был удалён с сервера.')
+            self.change_to_disabled()
+            self.current_chat = None
         self.contacts_model.update_model()
 
     def make_connection(self, client_obj, contact_add_obj, contact_del_obj):
+        """
+        Метод установки соединения между методами-слотами и сигналами внешних объектов
+        """
         client_obj.new_message.connect(self.message)
         client_obj.connection_lost.connect(self.connection_lost)
+        client_obj.message_205.connect(self.sig_205)
         contact_add_obj.contacts_changed.connect(self.contacts_changed)
         contact_del_obj.contacts_changed.connect(self.contacts_changed)
-
-
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    window = MainWindow(1, 2)
-    window.start_dialog.show()
-    sys.exit(app.exec_())

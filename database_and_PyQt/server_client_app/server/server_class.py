@@ -1,11 +1,17 @@
-# libraries imports
+"""
+Модуль класса бэк-энда сервера
+"""
+
+
+import binascii
+import hmac
 import logging
+import os
 import select
 import threading
 from collections import deque
-from socket import socket, AF_INET, SOCK_STREAM, SOCK_DGRAM
+from socket import socket, AF_INET, SOCK_STREAM
 
-# project modules imports
 import common.variables as vrs
 import logs.server_log_config
 from common.utils import get_message, send_message
@@ -26,12 +32,6 @@ class NewConnection:
         self.value = False
         self.locker = threading.Lock()
 
-    def set_true(self):
-        self.value = True
-
-    def set_false(self):
-        self.value = False
-
 
 class Server(threading.Thread, metaclass=ServerVerifier):
     """
@@ -39,9 +39,11 @@ class Server(threading.Thread, metaclass=ServerVerifier):
     """
 
     RESPONSES = {
-        'OK': {vrs.RESPONSE: 200},
-        'BAD_REQUEST': {vrs.RESPONSE: 400, vrs.ERROR: 'Bad Request'},
+        '200': {vrs.RESPONSE: 200},
         '202': {vrs.RESPONSE: 202, vrs.LIST_INFO: None},
+        '205': {vrs.RESPONSE: 205},
+        '400': {vrs.RESPONSE: 400, vrs.ERROR: 'Bad Request'},
+        '511': {vrs.RESPONSE: 511, vrs.DATA: None},
     }
 
     listen_port = Port()
@@ -50,17 +52,6 @@ class Server(threading.Thread, metaclass=ServerVerifier):
     def __init__(self, listen_port, listen_address, db_path, new_connection):
         """
         Метод инициализации
-        self.clients_names - словарь зарегистрированых пользователей
-        self.clients_list - список подключённых пользователей
-        self.messages_deque - очередь сообщений пользователей
-        self.receive_data_list - список сокетов на получение
-        self.send_data_list - список сокетов на отправку
-        self.errors_list - список сокетов с ошибками
-        self.listen_port - прослушиваемый порт
-        self.listen_address - прослушиваемый адрес
-        self.transport - сокет сервера
-        self.new_connection - объект класса-регулятора
-        self.database - объект базы данных
         """
         self.clients_names = dict()
         self.clients_list = []
@@ -79,7 +70,6 @@ class Server(threading.Thread, metaclass=ServerVerifier):
     def prepare_socket(self):
         """
         Метод подготовки и запуска сокета сервера
-        :return: сокет сервера
         """
         transport = socket(AF_INET, SOCK_STREAM)
         transport.bind((self.listen_address, self.listen_port))
@@ -90,28 +80,10 @@ class Server(threading.Thread, metaclass=ServerVerifier):
     def process_client_message(self, message, client):
         """
         Метод обработки сообщений клиентов
-        :param message: сообщение клиента
-        :param client: сокет клиента
-        :return: None
         """
         if message.get(vrs.ACTION) == vrs.PRESENCE and vrs.USER in message and \
                 vrs.TIME in message and vrs.PORT in message:
-            client_name = message[vrs.USER][vrs.ACCOUNT_NAME]
-            if client_name not in self.clients_names:
-                self.clients_names[client_name] = client
-                client_ip, client_port = client.getpeername()
-                self.database.login_user(client_name, client_ip, client_port)
-                send_message(client, self.RESPONSES.get('OK'))
-                LOG.debug(f'Клиент {client_name} зарегестрирован на сервере')
-                with self.new_connection.locker:
-                    self.new_connection.value = True
-            else:
-                response = self.RESPONSES['BAD_REQUEST']
-                response[vrs.ERROR] = f'Имя пользователя {client_name} уже занято.'
-                send_message(client, response)
-                self.clients_list.remove(client)
-                client.close()
-                LOG.error(f'Имя пользователя {client_name} уже занято. Клиент отключён.')
+            self.autorize_user(message, client)
             return
 
         if message.get(vrs.ACTION) == vrs.MESSAGE and vrs.MESSAGE_TEXT in message and \
@@ -142,13 +114,13 @@ class Server(threading.Thread, metaclass=ServerVerifier):
         if vrs.ACTION in message and message[vrs.ACTION] == vrs.ADD_CONTACT and vrs.ACCOUNT_NAME in message and \
                 vrs.USER in message and self.clients_names[message[vrs.USER]] == client:
             self.database.add_contact(message[vrs.USER], message[vrs.ACCOUNT_NAME])
-            send_message(client, self.RESPONSES['OK'])
+            send_message(client, self.RESPONSES['200'])
             return
 
         if vrs.ACTION in message and message[vrs.ACTION] == vrs.REMOVE_CONTACT and vrs.ACCOUNT_NAME in message and \
                 vrs.USER in message and self.clients_names[message[vrs.USER]] == client:
             self.database.remove_contact(message[vrs.USER], message[vrs.ACCOUNT_NAME])
-            send_message(client, self.RESPONSES['OK'])
+            send_message(client, self.RESPONSES['200'])
             return
 
         if vrs.ACTION in message and message[vrs.ACTION] == vrs.USERS_REQUEST and vrs.ACCOUNT_NAME in message and \
@@ -158,30 +130,113 @@ class Server(threading.Thread, metaclass=ServerVerifier):
             send_message(client, response)
             return
 
-        send_message(client, self.RESPONSES.get('BAD_REQUEST'))
-        return
+        if vrs.ACTION in message and message[vrs.ACTION] == vrs.PUBLIC_KEY_REQUEST and vrs.ACCOUNT_NAME in message:
+            response = self.RESPONSES['511']
+            response[vrs.DATA] = self.database.get_pubkey(message[vrs.ACCOUNT_NAME])
+            if response[vrs.DATA]:
+                try:
+                    send_message(client, response)
+                except OSError:
+                    self.remove_client(client)
+            else:
+                response = self.RESPONSES['400']
+                response[vrs.ERROR] = 'Нет публичного ключа для данного пользователя'
+                try:
+                    send_message(client, response)
+                except OSError:
+                    self.remove_client(client)
+            return
+
+        response = self.RESPONSES['400']
+        response[vrs.ERROR] = 'Запрос некорректен.'
+        try:
+            send_message(client, response)
+        except OSError:
+            self.remove_client(client)
+
+    def autorize_user(self, message, client):
+        """
+        Метод, реализующий авторизцию пользователей
+        """
+        LOG.debug(f'Начата авторизация для {message[vrs.USER]}')
+        if message[vrs.USER][vrs.ACCOUNT_NAME] in self.clients_names:
+            response = self.RESPONSES['400']
+            response[vrs.ERROR] = 'Имя пользователя уже занято.'
+            try:
+                LOG.debug(f'Имя пользователя уже занято: {response}')
+                send_message(client, response)
+            except OSError:
+                LOG.debug('OS Error')
+                pass
+            self.clients_list.remove(client)
+            client.close()
+        elif not self.database.check_user(message[vrs.USER][vrs.ACCOUNT_NAME]):
+            response = self.RESPONSES['400']
+            response[vrs.ERROR] = 'Пользователь не зарегистрирован.'
+            try:
+                LOG.debug(f'Пользователь не зарегистрирован: {response}')
+                send_message(client, response)
+            except OSError:
+                pass
+            self.clients_list.remove(client)
+            client.close()
+        else:
+            LOG.debug('Correct username, starting passwd check.')
+            message_auth = self.RESPONSES['511']
+            random_str = binascii.hexlify(os.urandom(64))
+            message_auth[vrs.DATA] = random_str.decode('ascii')
+            hash_string = hmac.new(self.database.get_hash(message[vrs.USER][vrs.ACCOUNT_NAME]), random_str, 'MD5')
+            digest = hash_string.digest()
+            LOG.debug(f'Auth message = {message_auth}')
+            try:
+                send_message(client, message_auth)
+                ans = get_message(client)
+                LOG.debug(f'Auth client message = {ans}')
+            except OSError as err:
+                LOG.debug('Error in auth, data:', exc_info=err)
+                client.close()
+                return
+            client_digest = binascii.a2b_base64(ans[vrs.DATA])
+            if vrs.RESPONSE in ans and ans[vrs.RESPONSE] == 511 and hmac.compare_digest(
+                    digest, client_digest):
+                self.clients_names[message[vrs.USER][vrs.ACCOUNT_NAME]] = client
+                client_ip, client_port = client.getpeername()
+                try:
+                    send_message(client, self.RESPONSES['200'])
+                    LOG.debug(f'Auth client complete')
+                    with self.new_connection.locker:
+                        self.new_connection.value = True
+                except OSError:
+                    self.remove_client(message[vrs.USER][vrs.ACCOUNT_NAME])
+                self.database.login_user(
+                    message[vrs.USER][vrs.ACCOUNT_NAME],
+                    client_ip,
+                    client_port,
+                    message[vrs.USER][vrs.PUBLIC_KEY])
+            else:
+                response = self.RESPONSES['400']
+                response[vrs.ERROR] = 'Неверный пароль.'
+                LOG.debug(f'Auth wrong = {response}')
+                try:
+                    send_message(client, response)
+                except OSError:
+                    pass
+                self.clients_list.remove(client)
+                client.close()
 
     def received_messages_processing(self):
         """
         Метод получения сообщений от сокетов клиентов
-        :return: None
         """
         for client_with_message in self.receive_data_list:
             try:
                 self.process_client_message(get_message(client_with_message), client_with_message)
             except Exception:
-                LOG.info(f'Клиент {client_with_message.getpeername()} отключился от сервера.')
-                for name in self.clients_names:
-                    if self.clients_names[name] == client_with_message:
-                        self.database.logout_user(name)
-                        del self.clients_names[name]
-                        break
-                self.clients_list.remove(client_with_message)
+                self.remove_client(client_with_message)
 
     def send_messages_to_clients(self):
         """
         Метод отправки сообщений клиентам
-        :return: None
         """
         while self.messages_deque:
             message = self.messages_deque.popleft()
@@ -201,10 +256,33 @@ class Server(threading.Thread, metaclass=ServerVerifier):
                 LOG.error(f'Пользователь {message[vrs.DESTINATION]} не зарегистрирован на сервере, '
                           f'отправка сообщения невозможна.')
 
+    def remove_client(self, client):
+        """
+        Метод обработчик клиента с которым прервана связь.
+        Ищет клиента и удаляет его из списков и базы:
+        """
+        LOG.info(f'Клиент {client.getpeername()} отключился от сервера.')
+        for name in self.clients_names:
+            if self.clients_names[name] == client:
+                self.database.logout_user(name)
+                del self.clients_names[name]
+                break
+        self.clients_list.remove(client)
+        client.close()
+
+    def service_update_lists(self):
+        """
+        Метод рассылки клиентам сообщения об обновлении списков клиентов на сервере
+        """
+        for client in self.clients_names:
+            try:
+                send_message(self.clients_names[client], self.RESPONSES['205'])
+            except OSError:
+                self.remove_client(self.clients_names[client])
+
     def run(self):
         """
-        Основной метод сервера
-        :return: None
+        Основной метод сервера.
         """
 
         LOG.info(f'Запущен сервер. Порт подключений: {self.listen_port}, адрес прослушивания: {self.listen_address}')

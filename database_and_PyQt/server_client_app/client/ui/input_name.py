@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'client/ui/input_name.ui'
+# Form implementation generated from reading ui file 'input_name.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.4
 #
@@ -14,7 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_Dialog(object):
     def setupUi(self, Dialog):
         Dialog.setObjectName("Dialog")
-        Dialog.resize(300, 170)
+        Dialog.resize(300, 200)
         palette = QtGui.QPalette()
         brush = QtGui.QBrush(QtGui.QColor(200, 222, 239))
         brush.setStyle(QtCore.Qt.SolidPattern)
@@ -45,7 +45,7 @@ class Ui_Dialog(object):
         palette.setBrush(QtGui.QPalette.Disabled, QtGui.QPalette.Window, brush)
         Dialog.setPalette(palette)
         self.buttonBox = QtWidgets.QDialogButtonBox(Dialog)
-        self.buttonBox.setGeometry(QtCore.QRect(65, 90, 170, 30))
+        self.buttonBox.setGeometry(QtCore.QRect(65, 150, 170, 30))
         self.buttonBox.setOrientation(QtCore.Qt.Horizontal)
         self.buttonBox.setStandardButtons(QtWidgets.QDialogButtonBox.Cancel|QtWidgets.QDialogButtonBox.Ok)
         self.buttonBox.setObjectName("buttonBox")
@@ -56,13 +56,27 @@ class Ui_Dialog(object):
         self.label.setFont(font)
         self.label.setAlignment(QtCore.Qt.AlignCenter)
         self.label.setObjectName("label")
-        self.lineEdit = QtWidgets.QLineEdit(Dialog)
-        self.lineEdit.setGeometry(QtCore.QRect(10, 40, 280, 25))
+        self.user_login = QtWidgets.QLineEdit(Dialog)
+        self.user_login.setGeometry(QtCore.QRect(10, 40, 280, 25))
         font = QtGui.QFont()
         font.setPointSize(10)
-        self.lineEdit.setFont(font)
-        self.lineEdit.setAlignment(QtCore.Qt.AlignCenter)
-        self.lineEdit.setObjectName("lineEdit")
+        self.user_login.setFont(font)
+        self.user_login.setAlignment(QtCore.Qt.AlignCenter)
+        self.user_login.setObjectName("user_login")
+        self.label_2 = QtWidgets.QLabel(Dialog)
+        self.label_2.setGeometry(QtCore.QRect(25, 70, 250, 20))
+        font = QtGui.QFont()
+        font.setPointSize(10)
+        self.label_2.setFont(font)
+        self.label_2.setAlignment(QtCore.Qt.AlignCenter)
+        self.label_2.setObjectName("label_2")
+        self.user_password = QtWidgets.QLineEdit(Dialog)
+        self.user_password.setGeometry(QtCore.QRect(10, 100, 280, 25))
+        font = QtGui.QFont()
+        font.setPointSize(10)
+        self.user_password.setFont(font)
+        self.user_password.setAlignment(QtCore.Qt.AlignCenter)
+        self.user_password.setObjectName("user_password")
 
         self.retranslateUi(Dialog)
         self.buttonBox.accepted.connect(Dialog.accept)
@@ -73,3 +87,4 @@ class Ui_Dialog(object):
         _translate = QtCore.QCoreApplication.translate
         Dialog.setWindowTitle(_translate("Dialog", "Dialog"))
         self.label.setText(_translate("Dialog", "Введите имя пользователя:"))
+        self.label_2.setText(_translate("Dialog", "Введите пароль"))
