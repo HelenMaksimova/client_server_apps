@@ -1,4 +1,8 @@
-# libraries imports
+"""
+Модуль класса бэк-энда сервера
+"""
+
+
 import binascii
 import hmac
 import logging
@@ -8,7 +12,6 @@ import threading
 from collections import deque
 from socket import socket, AF_INET, SOCK_STREAM
 
-# project modules imports
 import common.variables as vrs
 import logs.server_log_config
 from common.utils import get_message, send_message
@@ -28,12 +31,6 @@ class NewConnection:
     def __init__(self):
         self.value = False
         self.locker = threading.Lock()
-
-    def set_true(self):
-        self.value = True
-
-    def set_false(self):
-        self.value = False
 
 
 class Server(threading.Thread, metaclass=ServerVerifier):
@@ -55,17 +52,6 @@ class Server(threading.Thread, metaclass=ServerVerifier):
     def __init__(self, listen_port, listen_address, db_path, new_connection):
         """
         Метод инициализации
-        self.clients_names - словарь зарегистрированых пользователей
-        self.clients_list - список подключённых пользователей
-        self.messages_deque - очередь сообщений пользователей
-        self.receive_data_list - список сокетов на получение
-        self.send_data_list - список сокетов на отправку
-        self.errors_list - список сокетов с ошибками
-        self.listen_port - прослушиваемый порт
-        self.listen_address - прослушиваемый адрес
-        self.transport - сокет сервера
-        self.new_connection - объект класса-регулятора
-        self.database - объект базы данных
         """
         self.clients_names = dict()
         self.clients_list = []
@@ -84,7 +70,6 @@ class Server(threading.Thread, metaclass=ServerVerifier):
     def prepare_socket(self):
         """
         Метод подготовки и запуска сокета сервера
-        :return: сокет сервера
         """
         transport = socket(AF_INET, SOCK_STREAM)
         transport.bind((self.listen_address, self.listen_port))
@@ -95,9 +80,6 @@ class Server(threading.Thread, metaclass=ServerVerifier):
     def process_client_message(self, message, client):
         """
         Метод обработки сообщений клиентов
-        :param message: сообщение клиента
-        :param client: сокет клиента
-        :return: None
         """
         if message.get(vrs.ACTION) == vrs.PRESENCE and vrs.USER in message and \
                 vrs.TIME in message and vrs.PORT in message:
@@ -173,7 +155,9 @@ class Server(threading.Thread, metaclass=ServerVerifier):
             self.remove_client(client)
 
     def autorize_user(self, message, client):
-        """Метод реализующий авторизцию пользователей"""
+        """
+        Метод, реализующий авторизцию пользователей
+        """
         LOG.debug(f'Начата авторизация для {message[vrs.USER]}')
         if message[vrs.USER][vrs.ACCOUNT_NAME] in self.clients_names:
             response = self.RESPONSES['400']
@@ -243,7 +227,6 @@ class Server(threading.Thread, metaclass=ServerVerifier):
     def received_messages_processing(self):
         """
         Метод получения сообщений от сокетов клиентов
-        :return: None
         """
         for client_with_message in self.receive_data_list:
             try:
@@ -254,7 +237,6 @@ class Server(threading.Thread, metaclass=ServerVerifier):
     def send_messages_to_clients(self):
         """
         Метод отправки сообщений клиентам
-        :return: None
         """
         while self.messages_deque:
             message = self.messages_deque.popleft()
@@ -289,6 +271,9 @@ class Server(threading.Thread, metaclass=ServerVerifier):
         client.close()
 
     def service_update_lists(self):
+        """
+        Метод рассылки клиентам сообщения об обновлении списков клиентов на сервере
+        """
         for client in self.clients_names:
             try:
                 send_message(self.clients_names[client], self.RESPONSES['205'])
@@ -297,8 +282,7 @@ class Server(threading.Thread, metaclass=ServerVerifier):
 
     def run(self):
         """
-        Основной метод сервера
-        :return: None
+        Основной метод сервера.
         """
 
         LOG.info(f'Запущен сервер. Порт подключений: {self.listen_port}, адрес прослушивания: {self.listen_address}')

@@ -1,12 +1,27 @@
+"""
+Модуль дополнительный GUI-классов сервера
+"""
+
+
 from PyQt5.QtWidgets import QDialog, QPushButton, QTableView, QLabel, QLineEdit, QFileDialog, QMessageBox, QComboBox
 
 
 class HistoryWindow(QDialog):
+    """
+    Класс окна истории соббщений
+    """
+
     def __init__(self):
+        """
+        Метод инициализации
+        """
         super().__init__()
         self.create_widgets()
 
     def create_widgets(self):
+        """
+        Метод создания элементов
+        """
         self.setWindowTitle('Статистика клиентов')
         self.setFixedSize(700, 650)
 
@@ -20,11 +35,21 @@ class HistoryWindow(QDialog):
 
 
 class ConfigWindow(QDialog):
+    """
+    Класс окна конфигурации сервера
+    """
+
     def __init__(self):
+        """
+        Метод инициализации
+        """
         super().__init__()
         self.create_widgets()
 
     def create_widgets(self):
+        """
+        Метод создания элементов
+        """
         self.setFixedSize(365, 260)
         self.setWindowTitle('Настройки сервера')
 
@@ -77,18 +102,30 @@ class ConfigWindow(QDialog):
         self.close_button.clicked.connect(self.hide)
 
     def open_file_dialog(self):
+        """
+        Метод-обработчик для отображения окна выбора файла
+        """
         self.dialog = QFileDialog(self)
         path = self.dialog.getExistingDirectory()
         self.db_path.insert(path)
 
 
 class RegisterUser(QDialog):
+    """
+    Класс окна регистрации пользователя
+    """
 
     def __init__(self):
+        """
+        Метод инициализации
+        """
         super().__init__()
         self.create_widgets()
 
     def create_widgets(self):
+        """
+        Метод создания элементов
+        """
         self.setWindowTitle('Регистрация')
         self.setFixedSize(175, 183)
         self.setModal(True)
@@ -129,12 +166,21 @@ class RegisterUser(QDialog):
 
 
 class DelUserDialog(QDialog):
+    """
+    Класс окна удаления пользователя
+    """
 
     def __init__(self):
+        """
+        Метод инициализации
+        """
         super().__init__()
         self.create_widgets()
 
     def create_widgets(self):
+        """
+        Метод создания элементов
+        """
         self.setFixedSize(350, 120)
         self.setWindowTitle('Удаление пользователя')
         self.setModal(True)

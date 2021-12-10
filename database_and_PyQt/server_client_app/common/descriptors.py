@@ -1,5 +1,11 @@
-import common.custom_exceptions as custom_exceptions
+"""
+Модуль дескрипторов
+"""
+
+
 import ipaddress
+
+import common.custom_exceptions as custom_exceptions
 
 
 class Port:
@@ -29,6 +35,10 @@ class Port:
 
 
 class IpAddress:
+    """
+    Дескриптор для значения атрибута ip-адреса.
+    В случае, если задаётся недопустимое значение, выбрасывается исключение.
+    """
 
     def __set__(self, instance, value):
         if value:

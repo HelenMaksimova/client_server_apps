@@ -1,3 +1,8 @@
+"""
+Модуль второстепенных GUI-классов
+"""
+
+
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from PyQt5.QtWidgets import QApplication, QDialog, qApp
@@ -6,11 +11,21 @@ from client.ui import add_contact, del_contact, input_name
 
 
 class AvailibleContactsModel(QStandardItemModel):
+    """
+    Класс модели доступных для добавления контактов
+    """
+
     def __init__(self, database):
+        """
+        Метод инициализации
+        """
         super().__init__()
         self.database = database
 
     def update_model(self):
+        """
+        Метод обновления модели
+        """
         self.clear()
         users = set(self.database.get_users()) - set(self.database.get_contacts())
         users.remove(self.database.username)
@@ -20,8 +35,14 @@ class AvailibleContactsModel(QStandardItemModel):
 
 
 class InputUsernameDialog(QDialog):
+    """
+    Класс стартового окна приложения с формой ввода логина и пароля
+    """
 
     def __init__(self):
+        """
+        Метод инициализации
+        """
         super().__init__()
         self.ui = input_name.Ui_Dialog()
         self.ui.setupUi(self)
@@ -30,6 +51,9 @@ class InputUsernameDialog(QDialog):
         self.show()
 
     def press_ok(self):
+        """
+        Метод-обработчик нажатия кнопки ОК. Проверяет заполненность полей формы.
+        """
         username = self.ui.user_login.text()
         password = self.ui.user_password.text()
         if username and password:
@@ -38,10 +62,16 @@ class InputUsernameDialog(QDialog):
 
 
 class AddContactDialog(QDialog):
+    """
+    Класс окна добавления контакта
+    """
 
     contacts_changed = pyqtSignal()
 
     def __init__(self, database, client):
+        """
+        Метод инициализации
+        """
         super().__init__()
         self.ui = add_contact.Ui_Dialog()
         self.ui.setupUi(self)
@@ -53,13 +83,22 @@ class AddContactDialog(QDialog):
         self.ui.buttonBox.accepted.connect(self.add_contact)
 
     def showEvent(self, event):
+        """
+        Метод, обновляющий модель списка пользователей при показе окна
+        """
         self.availible_contacts_model.update_model()
 
     def update_userlist(self):
+        """
+        Метод-обработчик для обновления списка пользователей
+        """
         self.client.user_list_update()
         self.availible_contacts_model.update_model()
 
     def add_contact(self):
+        """
+        Метод-обработчик для добавления контакта
+        """
         contact = self.ui.comboBox.currentText()
         if contact:
             self.client.add_contact(contact)
@@ -68,10 +107,16 @@ class AddContactDialog(QDialog):
 
 
 class DelContactDialog(QDialog):
+    """
+    Класс окна удаления контакта
+    """
 
     contacts_changed = pyqtSignal()
 
     def __init__(self, database, client):
+        """
+        Метод инициализации
+        """
         super().__init__()
         self.ui = del_contact.Ui_Dialog()
         self.ui.setupUi(self)
@@ -82,15 +127,24 @@ class DelContactDialog(QDialog):
         self.ui.buttonBox.accepted.connect(self.delete_contact)
 
     def showEvent(self, event):
+        """
+        Метод, обновляющий список контактов пользователя при показе окна
+        """
         self.update_contacts()
 
     def update_contacts(self):
+        """
+        Метод обновления списка контактов пользователя
+        """
         self.contacts_model.clear()
         users = self.database.get_contacts()
         for user in users:
             self.contacts_model.appendRow(QStandardItem(user))
 
     def delete_contact(self):
+        """
+        Метод-обработчик для удаления контакта
+        """
         contact = self.ui.comboBox.currentText()
         if contact:
             self.client.remove_contact(contact)

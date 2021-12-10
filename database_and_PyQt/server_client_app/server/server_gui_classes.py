@@ -1,25 +1,39 @@
+"""
+Модуль основных GUI-классов сервера
+"""
+
+
 import binascii
 import hashlib
 import sys
+import configparser
 
 from PyQt5.QtWidgets import QMainWindow, QAction, qApp, QApplication, QLabel, QTableView, QMessageBox
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from PyQt5.QtCore import QTimer
-import configparser
 
 from server.server_gui_dialog_classes import HistoryWindow, ConfigWindow, RegisterUser, DelUserDialog
 
 
 class UsersListModel(QStandardItemModel):
+    """
+    Класс модели списка активных пользователей
+    """
 
     fields = ['Имя Клиента', 'IP Адрес', 'Порт', 'Время подключения']
 
     def __init__(self, database=None):
+        """
+        Метод инициализации
+        """
         super().__init__()
         self.setHorizontalHeaderLabels(self.fields)
         self.database = database
 
     def fill_model(self, data):
+        """
+        Метод заполнения модели данными
+        """
         self.clear()
         self.setHorizontalHeaderLabels(self.fields)
         for row in data:
@@ -35,20 +49,32 @@ class UsersListModel(QStandardItemModel):
             self.appendRow([user, ip, port, time])
 
     def fill_from_db(self):
+        """
+        Метод получения данных из базы и заполнения модели
+        """
         if self.database:
             data = self.database.users_active()
             self.fill_model(data)
 
 
 class HistoryListModel(QStandardItemModel):
+    """
+    Класс модели истории сообщений
+    """
     fields = ['Имя Клиента', 'Последний раз входил', 'Сообщений отправлено', 'Сообщений получено']
 
     def __init__(self, database=None):
+        """
+        Метод инициализации
+        """
         super().__init__()
         self.setHorizontalHeaderLabels(self.fields)
         self.database = database
 
     def fill_model(self, data):
+        """
+        Метод заполнения модели данными
+        """
         self.clear()
         self.setHorizontalHeaderLabels(self.fields)
         for row in data:
@@ -64,18 +90,30 @@ class HistoryListModel(QStandardItemModel):
             self.appendRow([user, last_seen, sent, received])
 
     def fill_from_db(self):
+        """
+        Метод получения данных из базы и заполнения модели
+        """
         if self.database:
             data = self.database.message_history()
             self.fill_model(data)
 
 
 class MainWindow(QMainWindow):
+    """
+    Класс основного окна приложения сервера
+    """
 
     def __init__(self):
+        """
+        Метод инициализации
+        """
         super().__init__()
         self.create_widgets()
 
     def create_widgets(self):
+        """
+        Метод создания элементов
+        """
         self.setFixedSize(850, 600)
         self.setWindowTitle('Сервер сообщений - alpha')
 
@@ -112,8 +150,14 @@ class MainWindow(QMainWindow):
 
 
 class ServerGuiManager:
+    """
+    Класс управления графической оболочкой сервера
+    """
 
     def __init__(self, database, new_connection, server, config=None):
+        """
+        Метод инициализации
+        """
         self.app = QApplication(sys.argv)
         self.database = database
         self.server = server
@@ -123,6 +167,10 @@ class ServerGuiManager:
         self.timer = QTimer()
 
     def create_widgets(self):
+        """
+        Метод создания элементов. Так же назначаются обработчики событий,
+        создаются объекты дополнительных окон и устанавливаются модели
+        """
         self.main_window = MainWindow()
         self.table_model = UsersListModel(self.database)
         self.main_window.active_clients_table.setModel(self.table_model)
@@ -150,30 +198,48 @@ class ServerGuiManager:
         self.config_window.save_btn.clicked.connect(self.save_server_settings)
 
     def show_main_window(self):
+        """
+        Метод отображения основного окна
+        """
         self.table_model.fill_from_db()
         self.main_window.active_clients_table.resizeColumnsToContents()
         self.main_window.statusBar().showMessage('Сервер работает')
         self.main_window.show()
 
     def show_history_window(self):
+        """
+        Метод отображения окна истории сообщений
+        """
         self.history_model.fill_from_db()
         self.history_window.history_table.resizeColumnsToContents()
         self.history_window.show()
 
     def show_settings_window(self):
+        """
+        Метод отображения окна конфигурации сервера
+        """
         self.config_window.show()
 
     def show_add_user_window(self):
+        """
+        Метод отображения окна добавления пользователя
+        """
         self.add_user_window.client_name.clear()
         self.add_user_window.client_passwd.clear()
         self.add_user_window.client_conf.clear()
         self.add_user_window.show()
 
     def show_del_user_window(self):
+        """
+        Метод отображения окна удаления пользователя
+        """
         self.all_users_fill()
         self.del_user_window.show()
 
     def renew_users_list(self):
+        """
+        Метод обновления списка активных пользователей
+        """
         if self.new_connection.value:
             self.table_model.fill_from_db()
             self.main_window.active_clients_table.resizeColumnsToContents()
@@ -181,10 +247,16 @@ class ServerGuiManager:
                 self.new_connection.value = False
 
     def all_users_fill(self):
+        """
+        Метод заполнения списка пользователей в окне удаления
+        """
         self.del_user_window.selector.clear()
         self.del_user_window.selector.addItems([item[0] for item in self.database.users_all()])
 
     def remove_user(self):
+        """
+        Метод удаления пользователя с сервера
+        """
         self.database.remove_user(self.del_user_window.selector.currentText())
         if self.del_user_window.selector.currentText() in self.server.clients_names:
             sock = self.server.clients_names[self.del_user_window.selector.currentText()]
@@ -194,6 +266,9 @@ class ServerGuiManager:
         self.del_user_window.hide()
 
     def save_data(self):
+        """
+        Метод сохранения данных о новом пользователе (метод регистрации)
+        """
         if not self.add_user_window.client_name.text():
             self.add_user_window.messages.critical(
                 self.add_user_window, 'Ошибка', 'Не указано имя пользователя.')
@@ -220,6 +295,9 @@ class ServerGuiManager:
             self.add_user_window.hide()
 
     def save_server_settings(self):
+        """
+        Метод сохранения конфигурации сервера
+        """
         message = QMessageBox()
         self.config['SETTINGS']['Database_path'] = self.config_window.db_path.text()
         self.config['SETTINGS']['Database_file'] = self.config_window.db_file.text()
@@ -243,5 +321,8 @@ class ServerGuiManager:
                     'Порт должен быть от 1024 до 65536')
 
     def start_timer(self):
+        """
+        Метод запуска таймера (для регулярного обновления списка активных пользователей)
+        """
         self.timer.timeout.connect(self.renew_users_list)
         self.timer.start(1000)
